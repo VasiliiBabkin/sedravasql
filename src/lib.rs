@@ -277,8 +277,12 @@ fn snapshot(conn: &Connection, prefix: &str) -> Result<Snapshot> {
 
 /// Preview a prefix deletion, without reserving or locking matching rows.
 pub fn preview_delete(path: &Path, prefix: &str) -> Result<Preview> {
-    let conn = open_existing(path, false)?;
-    let snap = snapshot(&conn, prefix)?;
+    let mut conn = open_existing(path, false)?;
+    // A read transaction keeps revision and matching rows on one snapshot.
+    // It does not reserve those rows for the later apply operation.
+    let tx = conn.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    let snap = snapshot(&tx, prefix)?;
+    tx.commit()?;
     Ok(Preview {
         prefix: prefix.to_owned(),
         count: snap.records.len(),
