@@ -25,6 +25,10 @@ None of these labels imply production readiness unless a separate, explicit, bou
 
 Reports should be stored under a future versioned location such as `evidence/<commit-or-release>/` and linked from [CLAIMS.md](CLAIMS.md). The directory is a convention, not existing evidence.
 
+## Prototype testing status
+
+The feature branch feat/prototype-v0.1 contains Rust unit tests and scripts/smoke.sh. **They have not yet been executed with Rust installed or produced verified output.** Before recording any result, run the documented commands in [PROTOTYPE.md](PROTOTYPE.md), capture toolchain versions, execution environment and raw failures, and check in a Cargo.lock file.
+
 ## Minimum test families before recommending real data storage
 
 - API correctness, constraints, input validation and parameterization.
