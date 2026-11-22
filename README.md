@@ -1,16 +1,16 @@
 # SedravaSQL
 
-**Safety-first SQL database project — early design stage.**
+**Safety-first embedded database experiment — Rust + SQLite prototype.**
 
 [Русская версия](README.ru.md)
 
-> **Status: planning / documentation only.** There is no database engine, runnable CLI, stable API, release, installation procedure, or production-readiness claim at this time. Do not store important data in SedravaSQL.
+> **Status: experimental source prototype.** Code and tests have been added, but a Rust build and test run have **not yet been verified**. There is no stable API, release, backup/recovery feature, or production-readiness claim. **Do not store important data in SedravaSQL.**
 
 ## Purpose
 
-SedravaSQL is a proposed database system focused on verifiable data changes, explicit safety policies, understandable history, and tested recovery procedures.
+SedravaSQL explores verifiable data changes, explicit safety policies, understandable history, and eventually tested recovery procedures.
 
-The intended first implementation is a Rust-based layer using SQLite as its transactional storage engine. This is an **architecture proposal**, not a shipped implementation. SQL compatibility, failure guarantees, performance, and platform support will only be described as available once implemented and tested.
+The experimental source implementation is a Rust library and CLI backed by SQLite. It currently manages only a TEXT key/value table. Source code is **not** a published release or proof of correctness. SQL compatibility, failure guarantees, performance, and platform support are not established.
 
 SedravaSQL is designed as a separate project from the [Sedrava programming language](https://github.com/VasiliiBabkin/sedrava). Language bindings may follow; the database is not intended to require Sedrava.
 
@@ -18,12 +18,12 @@ SedravaSQL is designed as a separate project from the [Sedrava programming langu
 
 | Capability | Status |
 | --- | --- |
-| Design documents and project principles | In progress |
-| Rust core and executable | Not implemented |
-| SQL interface | Not implemented |
-| Preview and safety checks for bulk changes | Proposed |
-| Auditable change history | Proposed |
-| Backup verification and recovery | Proposed |
+| Design documents and project principles | Drafted |
+| Rust core and CLI source | Written; build not yet verified |
+| SQL interface | Read-only SELECT source; not tested |
+| Preview and safety checks for prefix deletion | Source prototype; not tested |
+| Audit history of managed changes | Source prototype; not tested |
+| Backup verification and recovery | Not implemented |
 | Stable API and releases | Not available |
 | Production use | **Not supported** |
 
@@ -32,6 +32,8 @@ No benchmarks or reliability results have been published.
 ## Start here
 
 - [Русское описание](README.ru.md)
+- [Prototype quick start, commands, limits, tests](docs/PROTOTYPE.md)
+- [Threat model and exclusions](docs/THREAT_MODEL.md)
 - [Scope and architecture](docs/ARCHITECTURE.md)
 - [Roadmap and acceptance criteria](docs/ROADMAP.md)
 - [Evidence and verification policy](docs/VERIFICATION.md)
@@ -41,7 +43,7 @@ No benchmarks or reliability results have been published.
 - [Security reporting](SECURITY.md)
 - [Dedication](DEDICATION.md)
 
-**Installation:** there is nothing to install yet. When the first runnable version exists, this section will contain verified, copy-and-paste commands, supported platforms, expected output, and troubleshooting steps.
+**Build (experimental, not yet independently verified):** install Rust 1.89+ and a C compiler; run `cargo build` and `cargo test`. See [PROTOTYPE.md](docs/PROTOTYPE.md) for disposable-data examples and limitations. There is no installer or release package.
 
 ## Honesty and evidence
 

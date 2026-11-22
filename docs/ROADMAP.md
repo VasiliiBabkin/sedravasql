@@ -9,10 +9,12 @@
 - [x] Dedication published
 - [x] Choose and publish a project license: Apache-2.0 (same as Sedrava)
 - [x] Confirm canonical repository slug and links: `VasiliiBabkin/sedravasql`
-- [ ] Agree on minimal user-facing commands and compatibility policy
-- [ ] Define initial threat model and data-retention choices
+- [x] Publish minimal prototype commands and explicitly restricted SQL surface (docs/PROTOTYPE.md)
+- [x] Publish initial draft threat model (docs/THREAT_MODEL.md); retention decisions remain open
 
 ## Milestone 1 — executable prototype (candidate v0.1)
+
+**Source draft present on branch feat/prototype-v0.1. The following acceptance items stay unchecked until build/test evidence is published.**
 
 - [ ] Versioned Rust project with reproducible build instructions
 - [ ] Create/open database through a deliberately minimal interface
@@ -26,6 +28,8 @@
 - [ ] Publish platform support and known limitations
 
 **Acceptance gate:** external user can clone, build, run a complete example, see test results, and reproduce at least one rejected unsafe operation. No production recommendation.
+
+**Blocking tasks:** execute cargo build / cargo test / smoke.sh on a documented Rust 1.89+ environment; commit generated Cargo.lock; log failures and raw evidence before considering a merge or version tag.
 
 ## Milestone 2 — durability and recovery research
 

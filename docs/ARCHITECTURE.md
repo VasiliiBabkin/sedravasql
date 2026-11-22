@@ -1,6 +1,6 @@
 # SedravaSQL — architecture proposal
 
-**Status:** proposal, not implemented. No code or compatibility guarantees exist yet.
+**Status:** architectural proposal with an unverified experimental Rust implementation on branch feat/prototype-v0.1. No stable API or compatibility guarantee.
 
 ## Problem statement
 
@@ -16,6 +16,12 @@ This project **does not** claim to understand arbitrary business intent, elimina
 4. Managed data mutations through a controlled API; direct writes to the underlying file are outside the proposed audit and policy guarantees.
 5. Metadata, policies, and audit entries for a committed operation should be stored atomically with the data mutation wherever supported by the storage engine. Tests must prove the chosen implementation meets that property.
 6. No networking, remote access, replication, encryption-at-rest, or multi-tenant isolation guarantee in the first milestone.
+
+## Prototype implementation boundary
+
+The source prototype exposes a single embedded key/value table, managed puts, read-only SELECT, and guarded prefix deletion. It uses rusqlite and SQLite. It is not a generic SQL server. The managed audit table and revision metadata are updated in the same SQLite transactions as managed writes. A token is derived from a random database instance identifier, current revision and sorted matching keys/values; apply recomputes it in an IMMEDIATE write transaction. Copies of the same database file share the identifier.
+
+The design has not yet passed a Rust build or runtime test in a verified environment. This paragraph describes **source intent**, not proven behavior. See [prototype usage and limits](PROTOTYPE.md) and the [threat model](THREAT_MODEL.md).
 
 ## Suggested conceptual components
 
@@ -36,7 +42,7 @@ This project **does not** claim to understand arbitrary business intent, elimina
 - A database-level audit trail is not inherently tamper-proof against a privileged administrator or direct file modification.
 - Rollback of a database transaction does not undo external side effects, such as messages sent to users or payments performed elsewhere.
 
-## Architecture decisions needed before implementation
+## Architecture decisions still open
 
 - What is the smallest supported SQL subset?
 - What operation types are eligible for preview?
