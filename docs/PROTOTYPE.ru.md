@@ -32,8 +32,7 @@ SQLite-базу с текстовыми ключами и значениями. 
 
     git clone https://github.com/VasiliiBabkin/sedravasql.git
     cd sedravasql
-    git fetch origin feat/prototype-v0.1
-    git switch feat/prototype-v0.1
+    git switch --track origin/feat/prototype-v0.1
     cargo build
     cargo test
 
