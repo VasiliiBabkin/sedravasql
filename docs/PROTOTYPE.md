@@ -93,7 +93,7 @@ information available to the process.
   confidentiality protection or a tamper-proof log.
 - A privileged process using SQLite directly can alter rows and audit tables.
   The CLI cannot enforce invariants on such external writes.
-- A preview token is a **state fingerprint**, not a password, signature,
+- A preview token incorporates a per-database random instance identifier and is a **state fingerprint**, not a password, signature,
   authorization, durable snapshot, or historical backup.
 - Rechecking uses a database revision for managed writes and a fingerprint
   of matching keys and values. External writes are not necessarily reflected
