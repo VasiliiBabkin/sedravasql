@@ -19,7 +19,7 @@ This project **does not** claim to understand arbitrary business intent, elimina
 
 ## Prototype implementation boundary
 
-The source prototype exposes a single embedded key/value table, managed puts, read-only SELECT, and guarded prefix deletion. It uses rusqlite and SQLite. It is not a generic SQL server. The managed audit table and revision metadata are updated in the same SQLite transactions as managed writes. A token is derived from current revision and sorted matching keys/values; apply recomputes it in an IMMEDIATE write transaction.
+The source prototype exposes a single embedded key/value table, managed puts, read-only SELECT, and guarded prefix deletion. It uses rusqlite and SQLite. It is not a generic SQL server. The managed audit table and revision metadata are updated in the same SQLite transactions as managed writes. A token is derived from a random database instance identifier, current revision and sorted matching keys/values; apply recomputes it in an IMMEDIATE write transaction. Copies of the same database file share the identifier.
 
 The design has not yet passed a Rust build or runtime test in a verified environment. This paragraph describes **source intent**, not proven behavior. See [prototype usage and limits](PROTOTYPE.md) and the [threat model](THREAT_MODEL.md).
 
