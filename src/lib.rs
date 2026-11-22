@@ -121,7 +121,7 @@ pub fn initialize(path: &Path) -> Result<bool> {
     )?;
     let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let existing_tables: i64 = tx.query_row(
-        "SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+        "SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name NOT GLOB 'sqlite_*'",
         [],
         |row| row.get(0),
     )?;
@@ -501,6 +501,34 @@ mod tests {
         ).unwrap();
         assert!(put(&path, "blocked", "value").is_err());
         assert_eq!(get(&path, "blocked").unwrap(), None);
+    }
+
+    #[test]
+    fn bulk_delete_audit_failure_rolls_back_all_rows() {
+        let (_dir, path) = db();
+        put(&path, "batch:a", "one").unwrap();
+        put(&path, "batch:b", "two").unwrap();
+        let p = preview_delete(&path, "batch:").unwrap();
+        let c = Connection::open(&path).unwrap();
+        c.execute_batch(
+            "CREATE TRIGGER block_delete_audit BEFORE INSERT ON sedravasql_audit
+             WHEN NEW.action = 'DELETE'
+             BEGIN SELECT RAISE(ABORT, 'audit rejected'); END;",
+        ).unwrap();
+        assert!(apply_delete(&path, "batch:", &p.token).is_err());
+        assert_eq!(list(&path, "batch:").unwrap().len(), 2);
+        assert_eq!(audit(&path).unwrap().iter().filter(|a| a.action == "DELETE").count(), 0);
+    }
+
+    #[test]
+    fn direct_sqlite_write_changes_preview_fingerprint() {
+        let (_dir, path) = db();
+        put(&path, "key:one", "old").unwrap();
+        let p = preview_delete(&path, "key:").unwrap();
+        let c = Connection::open(&path).unwrap();
+        c.execute("UPDATE sedravasql_kv SET value = 'external' WHERE key = 'key:one'", []).unwrap();
+        assert!(apply_delete(&path, "key:", &p.token).is_err());
+        assert_eq!(get(&path, "key:one").unwrap().as_deref(), Some("external"));
     }
 
     #[test]
