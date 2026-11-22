@@ -1,11 +1,11 @@
 # Contributing / Участие
 
-Thank you for taking an interest in SedravaSQL. **The project is in the design stage, and no software license has been selected.**
+Thank you for taking an interest in SedravaSQL. The project is in the design stage. The repository is licensed under **Apache License 2.0**; read [LICENSE](LICENSE) before contributing. As specified in Section 5 of that license, contributions intentionally submitted for inclusion are provided under the license terms unless explicitly stated otherwise. Submit only materials you have rights to contribute.
 
 ## Before submitting changes
 
 - Issues discussing requirements, documentation errors, threat models, test proposals, and design trade-offs are welcome.
-- **Please do not submit code or substantial contributed materials until a license and contribution terms are published.** The repository being public does not automatically license its contents for redistribution.
+- Code and documentation contributions are welcome under the [Apache-2.0 license](LICENSE). Ensure you have the rights to submit them and retain required attribution and license notices.
 - Check existing issues and roadmap first; describe the use case and trade-offs rather than assuming an implementation.
 - Do not report untested ideas as implemented behavior.
 - Provide a minimal reproduction for defects when executable code exists.
@@ -31,4 +31,4 @@ Decisions should be recorded in docs or issue discussion. New behavior requires 
 
 ## По-русски
 
-Пока есть только концепция и документация. Сообщения об ошибках в документации, вопросы, сценарии и предложения по тестированию приветствуются. До публикации лицензии и правил приёма вкладов лучше не отправлять исходный код и большие текстовые материалы. Любые заявления о возможностях необходимо подтверждать воспроизводимыми проверками.
+Пока есть только концепция и документация. Вопросы, исправления, сценарии и предложения по тестированию приветствуются. Код и документация публикуются под [Apache-2.0](LICENSE). Присылайте только материалы, на передачу которых у вас есть права. Любые заявления о возможностях необходимо подтверждать воспроизводимыми проверками.
