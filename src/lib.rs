@@ -134,9 +134,11 @@ pub fn initialize(path: &Path) -> Result<bool> {
         "CREATE TABLE sedravasql_meta (
             id INTEGER PRIMARY KEY CHECK(id = 1),
             schema_version INTEGER NOT NULL CHECK(schema_version = 1),
-            revision INTEGER NOT NULL DEFAULT 0 CHECK(revision >= 0)
+            revision INTEGER NOT NULL DEFAULT 0 CHECK(revision >= 0),
+            instance_id TEXT NOT NULL UNIQUE
         );
-        INSERT INTO sedravasql_meta(id, schema_version, revision) VALUES (1, 1, 0);
+        INSERT INTO sedravasql_meta(id, schema_version, revision, instance_id)
+            VALUES (1, 1, 0, lower(hex(randomblob(16))));
         CREATE TABLE sedravasql_kv (
             key TEXT PRIMARY KEY NOT NULL,
             value TEXT NOT NULL
@@ -253,14 +255,15 @@ fn frame_hash(hasher: &mut Sha256, bytes: &[u8]) {
 
 fn snapshot(conn: &Connection, prefix: &str) -> Result<Snapshot> {
     validate_prefix(prefix)?;
-    let revision: i64 = conn.query_row(
-        "SELECT revision FROM sedravasql_meta WHERE id = 1",
+    let (revision, instance_id): (i64, String) = conn.query_row(
+        "SELECT revision, instance_id FROM sedravasql_meta WHERE id = 1",
         [],
-        |row| row.get(0),
+        |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
     let records = read_records(conn, prefix, MAX_PREVIEW_ROWS)?;
     let mut hasher = Sha256::new();
     hasher.update(b"SedravaSQL/bulk-delete-preview/v1");
+    frame_hash(&mut hasher, instance_id.as_bytes());
     frame_hash(&mut hasher, prefix.as_bytes());
     hasher.update(revision.to_le_bytes());
     hasher.update((records.len() as u64).to_le_bytes());
@@ -459,6 +462,18 @@ mod tests {
         put(&path, "test:a", "v2").unwrap();
         assert!(apply_delete(&path, "test:", &p.token).unwrap_err().to_string().contains("stale"));
         assert_eq!(get(&path, "test:a").unwrap().as_deref(), Some("v2"));
+    }
+
+    #[test]
+    fn preview_tokens_from_distinct_databases_do_not_match() {
+        let (_dir_a, path_a) = db();
+        let (_dir_b, path_b) = db();
+        put(&path_a, "same:key", "same-value").unwrap();
+        put(&path_b, "same:key", "same-value").unwrap();
+        let preview_a = preview_delete(&path_a, "same:").unwrap();
+        let preview_b = preview_delete(&path_b, "same:").unwrap();
+        assert_ne!(preview_a.token, preview_b.token);
+        assert!(apply_delete(&path_b, "same:", &preview_a.token).is_err());
     }
 
     #[test]
