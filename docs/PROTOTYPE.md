@@ -25,8 +25,7 @@ builds are not fully reproducible. Record the actual dependencies and toolchain.
 
 To try this unmerged prototype, check out the feature branch first:
 
-    git fetch origin feat/prototype-v0.1
-    git switch feat/prototype-v0.1
+    git switch --track origin/feat/prototype-v0.1
 
 The command-line binary is target/debug/sedravasql (or target\debug\sedravasql.exe
 on Windows). Use only disposable demonstration data.
