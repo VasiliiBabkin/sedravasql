@@ -25,6 +25,16 @@ Thank you for taking an interest in SedravaSQL. The project is in the design sta
 
 **Scope / Область:** is this a question, design proposal, or confirmed defect?
 
+## Local developer checks (experimental)
+
+Use Rust 1.89+ and a C compiler, and run these from the repository root before proposing changes:
+
+    cargo fmt --all -- --check
+    cargo test --all-targets
+    bash scripts/smoke.sh
+
+Document the exact Rust version, platform, command output and any failures. Do not claim a check passed unless it actually ran. A lockfile and independently recorded build results are still pending.
+
 ## Process
 
 Decisions should be recorded in docs or issue discussion. New behavior requires a test plan and documentation updates. Heavy tests should run where resource budgets allow, with externally verifiable results committed or linked. Avoid unnecessary GitHub Actions usage.
