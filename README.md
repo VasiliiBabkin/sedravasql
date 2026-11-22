@@ -49,7 +49,7 @@ Project status, implemented features, measured characteristics, and external ref
 
 ## License
 
-**No license has been selected or granted yet.** Public visibility does not by itself grant permission to reuse or redistribute code. The license must be explicitly chosen before accepting code contributions or promoting the project for reuse; see [CONTRIBUTING.md](CONTRIBUTING.md).
+SedravaSQL is licensed under the **Apache License, Version 2.0**, matching [Sedrava](https://github.com/VasiliiBabkin/sedrava/blob/main/LICENSE). See the complete terms in [LICENSE](LICENSE). Contributions must follow [CONTRIBUTING.md](CONTRIBUTING.md); third-party dependencies retain their own licenses.
 
 ## In memory
 
