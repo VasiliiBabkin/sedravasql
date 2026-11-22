@@ -24,9 +24,10 @@ authorization, encryption, privilege isolation, or tamper-proof audit.
    same SQLite transaction, otherwise roll back.
 2. Prefix deletion requires a preview token and rechecks it inside an IMMEDIATE
    transaction before deleting anything.
-3. Prototype policy rejects deletion of over ten matching records, even if the
+3. Preview tokens are scoped to a database instance identifier generated at initialization; copied databases share that identifier, and the token is not an authorization secret.
+4. Prototype policy rejects deletion of over ten matching records, even if the
    user possesses a valid token.
-4. The public read-only SELECT command cannot directly issue mutation SQL.
+5. The public read-only SELECT command cannot directly issue mutation SQL.
 
 ## Important exclusions
 
