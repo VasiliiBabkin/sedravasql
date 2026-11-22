@@ -8,7 +8,7 @@
 - [x] Architecture, roadmap, and evidence policy drafted
 - [x] Dedication published
 - [x] Choose and publish a project license: Apache-2.0 (same as Sedrava)
-- [ ] Decide the final repository slug and stable project links
+- [x] Confirm canonical repository slug and links: `VasiliiBabkin/sedravasql`
 - [ ] Agree on minimal user-facing commands and compatibility policy
 - [ ] Define initial threat model and data-retention choices
 
