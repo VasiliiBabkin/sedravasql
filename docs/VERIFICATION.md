@@ -51,3 +51,21 @@ A passing `PRAGMA integrity_check` is useful but is not proof that business data
 If a claim turns out to be wrong, amend the claim register and user-facing docs, preserve the original result where practical, and explain the correction. Untested functionality must remain labelled as such.
 
 Source material is listed in [REFERENCES.md](REFERENCES.md).
+
+## Initial independent VDS run — 2026-11-23
+
+Ubuntu Linux x86_64; Rust 1.100.0; bundled SQLite from
+rusqlite 0.32.1. Reproduce with:
+
+    cargo fmt --all -- --check
+    cargo test --locked --all-targets
+    cargo build --locked
+    python3 scripts/verify_local.py
+
+Observed: four Rust integration tests PASS, real CLI tests PASS,
+12 concurrent processes (one success, 11 CAS conflicts), four
+debug-only child process fault windows around COMMIT, and SQLite
+Backup API capturing committed WAL data from a live writer.
+Tests create and remove temporary files. They do not prove power-loss
+durability, performance, encryption, cross-OS behavior or production
+security. Optimized release does not activate fault injection.

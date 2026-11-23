@@ -1,6 +1,8 @@
 # SedravaSQL — architecture proposal
 
-**Status:** proposal, not implemented. No code or compatibility guarantees exist yet.
+**Status:** experimental working Rust/SQLite key/value prototype;
+the broader SQL server/storage vision below remains proposed. See
+[implemented v0.1 contract](IMPLEMENTED_V0_1.ru.md). No production claim.
 
 ## Problem statement
 
