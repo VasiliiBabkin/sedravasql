@@ -17,25 +17,25 @@ use std::path::Path;
 
 const SNAPSHOT_MAGIC: &[u8; 8] = b"SEDRSNP1";
 const SNAPSHOT_SCHEMA: &str = "sedravasql.snapshot.b3-preview.v1";
-const MAX_SNAPSHOT_BYTES: u64 = 64 * 1024 * 1024;
+pub(crate) const MAX_SNAPSHOT_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-struct Receipt {
-    request_key: String,
-    fingerprint: String,
-    result: NativeCommit,
+pub(crate) struct Receipt {
+    pub(crate) request_key: String,
+    pub(crate) fingerprint: String,
+    pub(crate) result: NativeCommit,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-struct Snapshot {
-    schema: String,
-    log_sha256: String,
-    log_bytes: u64,
-    sequence: u64,
-    chain_head_sha256: String,
-    entries: Vec<NativeEntry>,
-    receipts: Vec<Receipt>,
+pub(crate) struct Snapshot {
+    pub(crate) schema: String,
+    pub(crate) log_sha256: String,
+    pub(crate) log_bytes: u64,
+    pub(crate) sequence: u64,
+    pub(crate) chain_head_sha256: String,
+    pub(crate) entries: Vec<NativeEntry>,
+    pub(crate) receipts: Vec<Receipt>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -53,14 +53,14 @@ pub struct SnapshotReport {
 fn hash_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
-fn head_hex(bytes: &[u8; 32]) -> String {
+pub(crate) fn head_hex(bytes: &[u8; 32]) -> String {
     bytes.iter().map(|v| format!("{v:02x}")).collect()
 }
-fn is_hash(s: &str) -> bool {
+pub(crate) fn is_hash(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|c| c.is_ascii_hexdigit())
 }
 
-fn validate(snap: &Snapshot) -> Result<()> {
+pub(crate) fn validate(snap: &Snapshot) -> Result<()> {
     if snap.schema != SNAPSHOT_SCHEMA
         || !is_hash(&snap.log_sha256)
         || !is_hash(&snap.chain_head_sha256)
@@ -123,7 +123,7 @@ fn serialize_snapshot(snapshot: &Snapshot) -> Result<Vec<u8>> {
     out.extend_from_slice(&Sha256::digest(&out));
     Ok(out)
 }
-fn parse_snapshot(bytes: &[u8]) -> Result<Snapshot> {
+pub(crate) fn parse_snapshot(bytes: &[u8]) -> Result<Snapshot> {
     if bytes.len() < 44 || &bytes[..8] != SNAPSHOT_MAGIC {
         return Err(Error::Invalid("snapshot: foreign or truncated format"));
     }
@@ -141,7 +141,7 @@ fn parse_snapshot(bytes: &[u8]) -> Result<Snapshot> {
     validate(&snap)?;
     Ok(snap)
 }
-fn report(snap: &Snapshot, bytes: &[u8]) -> SnapshotReport {
+pub(crate) fn report(snap: &Snapshot, bytes: &[u8]) -> SnapshotReport {
     SnapshotReport {
         schema: snap.schema.clone(),
         source_sha256: snap.log_sha256.clone(),

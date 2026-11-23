@@ -90,3 +90,13 @@ complete idle native log to a new private file using an operator-approved
 SHA-256. Independent verification, five Rust tests and child-process CLI
 tests PASS. **Not** a writable restore, checkpoint, online backup,
 compaction, or disk index. [Protocol](NATIVE_SNAPSHOT_B3.ru.md).
+
+### Native B4: explicit restore from snapshot (experimental)
+
+Controlled restore-copy recreates all original journal frames and
+verifies exact log SHA-256/chain hash, state, receipts and CAS before
+writing a NEW private SEDRLOG1. Five new Rust tests and separate CLI
+8-commit smoke PASS, B1/B2/B3/SQLite regression maintained.
+This does not implement live restore, automatic checkpoint/compaction,
+indexing or physical power-loss guarantees.
+[Operator protocol](NATIVE_RESTORE_B4.ru.md).

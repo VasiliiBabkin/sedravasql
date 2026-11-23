@@ -4,12 +4,13 @@
 //! replacement for the existing SQLite backend. It uses one checksummed frame
 //! per atomic in-memory batch. Commit is acknowledged only after sync_all.
 //! Torn/corrupt frames always fail closed; B1 recovery-prefix copying and
-//! B2 offline backup and B3 read-only snapshot are opt-in experiments,
-//! not production recovery.
+//! B2 offline backup, B3 snapshot and B4 operator-approved offline restore
+//! are opt-in experiments, not production recovery.
 //! A stale .lock after a crash must be handled by an operator.
 //! Do not store irreplaceable data here.
 pub mod backup;
 pub mod recovery;
+pub mod restore;
 pub mod snapshot;
 
 use std::error::Error as StdError;
