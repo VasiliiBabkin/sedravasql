@@ -1,10 +1,11 @@
 //! Explicitly experimental CLI for the SQLite-free SedravaSQL append-log.
 //! NOT the existing stable or alpha SQLite CLI. Do not use for valuable data.
+use sedravasql_native_engine::recovery::{plan_recovery, recover_to_new_file};
 use sedravasql_native_engine::{NativeLog, NativeMutation, TransactionalStore};
 use std::{env, error::Error, fs, path::Path};
 
 fn usage() -> &'static str {
-    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | batch FILE REQUEST_KEY JSON_FILE>\n\
+    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | batch FILE REQUEST_KEY JSON_FILE | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256>\n\
      EXPERIMENTAL / SINGLE WRITER / NO AUTOMATIC RECOVERY / NOT FOR VALUABLE DATA"
 }
 fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
@@ -13,6 +14,14 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
             let mut db = NativeLog::create(Path::new(file))?;
             db.verify()?;
             println!(r#"{{"engine":"native-log-v1","created":true}}"#);
+        }
+        [_, cmd, file] if cmd == "recovery-plan" => {
+            let plan = plan_recovery(Path::new(file))?;
+            println!("{}", serde_json::to_string(&plan)?);
+        }
+        [_, cmd, source, destination, digest] if cmd == "recovery-copy" => {
+            let plan = recover_to_new_file(Path::new(source), Path::new(destination), digest)?;
+            println!("{}", serde_json::to_string(&plan)?);
         }
         [_, cmd, file] if cmd == "verify" => {
             let mut db = NativeLog::open(Path::new(file))?;
