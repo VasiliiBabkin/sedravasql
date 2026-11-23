@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a1221">
+  <meta name="description" content="SedravaSQL — экспериментальная СУБД на Rust. Проверяемые изменения, журнал аудита и исследовательский собственный движок. Статус alpha, не для production.">
+  <title>SedravaSQL — экспериментальная СУБД на Rust</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="canonical" href="https://sql.virtreal.ru/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="SedravaSQL — экспериментальная СУБД на Rust">
+  <meta property="og:description" content="От замысла до проверяемой операции с данными. Исследовательский проект. Alpha, не для production.">
+  <meta property="og:url" content="https://sql.virtreal.ru/">
+  <style>
+    :root{--bg:#09111e;--bg2:#0e1a2c;--surface:#121f32;--surface2:#16243a;--line:#26374f;--line2:#314962;--text:#edf4ff;--muted:#9db0c8;--accent:#89e3ca;--accent2:#8eb9ff;--warn:#ffca88;--max:1160px}
+    *{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:86px}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;line-height:1.65;overflow-x:hidden}
+    body:before{content:"";position:absolute;pointer-events:none;z-index:-1;top:0;left:0;width:100%;height:820px;background:radial-gradient(ellipse 53% 40% at 82% 15%,rgba(56,138,164,.17),transparent 80%),radial-gradient(ellipse 48% 30% at 17% 26%,rgba(68,93,174,.17),transparent 85%)}
+    a{color:inherit;text-decoration:none}button{font:inherit}a:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:4px}::selection{background:#8be2c6;color:#0a1724}
+    .wrap{width:min(calc(100% - 44px),var(--max));margin:0 auto}.top{position:sticky;top:0;z-index:15;background:rgba(9,17,30,.86);border-bottom:1px solid rgba(123,157,191,.15);backdrop-filter:blur(22px)}.top-inner{height:75px;display:flex;align-items:center;justify-content:space-between;gap:22px}.brand{display:flex;align-items:center;gap:11px;font-size:20px;font-weight:760;letter-spacing:-.06em;white-space:nowrap}.brand em{font-style:normal;color:var(--accent)}.mark{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(140deg,#233e57,#1d4a4c);border:1px solid #397274;box-shadow:inset 0 1px 0 #ffffff24;font-size:19px;font-weight:850;color:#bafce7}.nav{display:flex;gap:28px;align-items:center;font-size:13px;color:#bccbe0}.nav a:hover,.textlink:hover{color:var(--accent)}.toplink{border:1px solid #45637d;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:700;white-space:nowrap;transition:background .2s}.toplink:hover{background:#1b3047}
+    .hero{padding:108px 0 90px;display:grid;grid-template-columns:1.12fr .88fr;gap:50px;align-items:center}.eyebrow{display:inline-flex;align-items:center;gap:10px;color:#b7d5d2;font-size:12px;font-weight:750;letter-spacing:.13em;text-transform:uppercase}.dot{width:8px;height:8px;background:var(--accent);border-radius:50%;box-shadow:0 0 20px #75ddba}.hero h1{font-size:clamp(44px,6.2vw,77px);letter-spacing:-.07em;line-height:1.06;margin:24px 0 25px;font-weight:800}.hero h1 span{display:block;background:linear-gradient(93deg,#e5fcf4 6%,#7de3c2 63%,#9dbaff 99%);background-clip:text;-webkit-background-clip:text;color:transparent}.lead{font-size:18px;line-height:1.8;color:#b7c9de;max-width:600px}.actions{display:flex;align-items:center;gap:12px;margin:31px 0 0;flex-wrap:wrap}.btn{padding:14px 21px;border-radius:13px;background:var(--accent);color:#092522;font-size:14px;font-weight:780;border:1px solid transparent;display:inline-flex;align-items:center;justify-content:center;gap:9px;transition:transform .2s,background .2s}.btn:hover{transform:translateY(-2px);background:#b2f5df}.btn.secondary{color:#e4eeff;background:#15273c;border-color:#36516b}.btn.secondary:hover{background:#1c3550}.notice{margin-top:32px;display:flex;gap:12px;align-items:flex-start;border-left:2px solid #b88759;padding:10px 17px;color:#a7b7cb;font-size:12px;max-width:560px;background:linear-gradient(90deg,#9870490b,transparent)}.notice strong{color:var(--warn)}
+    .terminal{position:relative;border-radius:21px;background:#0d1727;border:1px solid #31455f;box-shadow:0 35px 100px #0005,0 0 0 8px #20354a28;overflow:hidden;transform:perspective(1200px) rotateY(-5deg)}.terminal-head{display:flex;gap:8px;align-items:center;padding:16px 20px;border-bottom:1px solid #26384d;background:#15233a}.round{width:9px;height:9px;border-radius:50%;background:#52708c}.round:first-child{background:#f29c86}.round:nth-child(2){background:#eac784}.round:nth-child(3){background:#7ed6b6}.term-label{color:#8fa8c1;margin-left:auto;font-size:11px;font-weight:600}.terminal pre{margin:0;padding:32px 26px 24px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.85;font-size:13px;color:#d2e8fb;font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace}.term-note{border-top:1px solid #26384d;padding:13px 24px;display:flex;align-items:center;justify-content:space-between;font-size:11px;color:#7e9db8}.good{color:#a4efd4}.syntax-prompt{color:#81edc6}.syntax-muted{color:#6b86a1}.syntax-command{color:#e4d4a1}
+    .section{padding:75px 0}.section-kicker{font-size:12px;font-weight:800;letter-spacing:.13em;color:#8ae4ca;text-transform:uppercase;margin-bottom:14px}.section h2{font-size:clamp(30px,4vw,46px);line-height:1.18;letter-spacing:-.045em;margin:0 0 18px}.intro{color:var(--muted);max-width:750px;margin:0 0 40px;font-size:15px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.tile{border-radius:19px;padding:27px 26px;background:linear-gradient(160deg,#152339,#101c2d);border:1px solid var(--line);min-height:220px;transition:border-color .2s,transform .2s}.tile:hover{border-color:#52817c;transform:translateY(-3px)}.tile .num{font-family:ui-monospace,monospace;font-size:12px;color:#90d9d0;margin-bottom:26px}.tile h3{font-size:19px;letter-spacing:-.02em;margin:0 0 12px}.tile p{font-size:13px;color:var(--muted);margin:0}.split{display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:start}.panel{border:1px solid var(--line);background:var(--surface);border-radius:21px;padding:29px}.panel h3{margin:0 0 21px;font-size:19px}.status-list{list-style:none;padding:0;margin:0;display:grid;gap:15px}.status-list li{display:flex;align-items:flex-start;gap:11px;font-size:13px;color:#bbcee3}.tick,.cross{font-size:13px;font-weight:900;flex:0 0 24px;height:24px;display:grid;place-items:center;border-radius:7px}.tick{color:#a3f5d0;background:#4b9e7c28}.cross{color:#facb8c;background:#bd834628}.meta-line{border-top:1px solid var(--line);margin-top:25px;padding-top:20px;color:#8faac4;font-size:12px}.feature{background:linear-gradient(160deg,#13263a,#0d202e);border-top:1px solid #21354b;border-bottom:1px solid #21354b}.feature-grid{display:grid;grid-template-columns:1fr 1fr;gap:55px;align-items:center}.code{border:1px solid #344860;border-radius:16px;background:#0b1423;overflow:hidden}.code-top{display:flex;justify-content:space-between;align-items:center;background:#17273b;padding:10px 15px;border-bottom:1px solid #2d4258;font-size:12px;color:#a6bad1}.copy{color:#bce6db;border:1px solid #41665f;background:#162e31;cursor:pointer;border-radius:8px;padding:7px 12px;font-size:12px}.copy:hover{background:#28504b}.code pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:2;font-family:ui-monospace,Consolas,monospace;margin:0;padding:24px;color:#dceafa}.caption{margin-top:12px;color:#8ca5bb;font-size:12px}.inline-pill{display:inline-flex;padding:5px 10px;border-radius:999px;background:#273e54;border:1px solid #405a70;color:#d5e7f4;font-size:12px;margin-bottom:17px}.process{display:grid;grid-template-columns:1fr 1fr;gap:16px}.step{border:1px solid #263c54;border-radius:15px;background:#132238;padding:23px}.step em{color:var(--accent);font-style:normal;font-family:monospace;font-size:12px}.step h3{margin:13px 0 10px;font-size:16px}.step p{color:var(--muted);font-size:13px;margin:0}.links{display:grid;grid-template-columns:repeat(2,1fr);gap:13px}.resource{background:#101e30;border:1px solid #30465e;border-radius:13px;padding:20px;display:flex;justify-content:space-between;align-items:center;gap:10px}.resource:hover{border-color:#79ceb8;background:#16283d}.resource span{font-size:14px;font-weight:710}.resource small{display:block;font-size:11px;color:#91a9bf;margin-top:6px;font-weight:400}.arrow{color:var(--accent);font-size:23px}
+    .memory{margin:28px 0 84px;border-radius:20px;padding:38px 42px;border:1px solid #486268;background:linear-gradient(135deg,#183537,#13283b 55%,#17243b)}.memory .quote{font-size:20px;letter-spacing:-.02em;max-width:850px;line-height:1.65;margin:12px 0}.memory .by{color:#b2c8cb;font-size:13px}.footer{border-top:1px solid #253950;padding:30px 0 42px;color:#90a4bc;font-size:12px;display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap}.footer a:hover{color:var(--accent)}.footer-links{display:flex;gap:19px;flex-wrap:wrap}
+    @media(max-width:980px){.hero{grid-template-columns:1fr;padding:80px 0 72px}.terminal{transform:none;max-width:710px}.nav{display:none}.feature-grid{grid-template-columns:1fr;gap:35px}.grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:620px){.wrap{width:min(calc(100% - 28px),var(--max))}.top-inner{height:66px}.brand{font-size:19px}.toplink{padding:7px 11px;font-size:12px}.hero{padding-top:67px;gap:33px}.hero h1{font-size:clamp(39px,11vw,56px)}.lead{font-size:16px}.terminal pre{padding:22px 16px;font-size:11px}.section{padding:55px 0}.grid,.split,.process,.links{grid-template-columns:1fr}.tile{min-height:0}.panel{padding:22px}.memory{margin:20px 0 52px;padding:25px}.memory .quote{font-size:17px}.footer{padding-top:24px}.actions{align-items:stretch}.actions .btn{flex-grow:1}.terminal .term-note{flex-wrap:wrap;gap:5px}}
+    @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{transition:none!important;animation:none!important}}
+  </style>
+</head>
+<body>
+  <header class="top"><div class="wrap top-inner">
+    <a class="brand" href="#top" aria-label="SedravaSQL — на главную"><span class="mark" aria-hidden="true">S</span> Sedrava<em>SQL</em></a>
+    <nav class="nav" aria-label="Разделы сайта"><a href="#why">Идея</a><a href="#status">Статус</a><a href="#try">Начать</a><a href="#roadmap">Развитие</a><a href="#docs">Документы</a><a href="/docs/">Руководство</a></nav>
+    <a class="toplink" href="https://github.com/VasiliiBabkin/sedravasql" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+  </div></header>
+  <main id="top">
+    <div class="wrap hero">
+      <div>
+        <div class="eyebrow"><span class="dot"></span> Исследовательский проект · Rust</div>
+        <h1>Данные.<span>Под контролем.</span></h1>
+        <p class="lead">SedravaSQL — экспериментальная система хранения данных, в которой изменение можно предварительно проверить, подтвердить и проследить по журналу.</p>
+        <div class="actions"><a class="btn" href="#try">Изучить прототип <span aria-hidden="true">↗</span></a><a class="btn secondary" href="#status">Что уже работает</a></div>
+        <div class="notice"><span aria-hidden="true">⚑</span><div><strong>Версия 0.1.0-alpha.1 · Не для production.</strong><br>Сейчас это локальный key/value-интерфейс поверх SQLite, а не полноценный SQL-сервер. Не храните важные данные.</div></div>
+      </div>
+      <div class="terminal" aria-label="Пример работы SedravaSQL">
+        <div class="terminal-head"><i class="round"></i><i class="round"></i><i class="round"></i><span class="term-label">sedravasql · CLI preview</span></div>
+        <pre><span class="syntax-muted"># сначала — план операции</span>
+<span class="syntax-prompt">$</span> sedravasql plan-put data.sqlite demo hello "Мир"
+
+<span class="syntax-muted"># затем — явная запись</span>
+<span class="syntax-prompt">$</span> sedravasql put data.sqlite demo hello "Мир" \
+  --expect 0 --request-key request-0001
+
+<span class="syntax-muted"># проверяем состояние</span>
+<span class="syntax-prompt">$</span> sedravasql get data.sqlite demo hello
+<span class="syntax-muted"># значение доступно для чтения</span>
+
+<span class="syntax-prompt">$</span> sedravasql verify data.sqlite</pre>
+        <div class="term-note"><span>Реальные команды прототипа</span><span class="good">Rust / SQLite</span></div>
+      </div>
+    </div>
+    <section id="why" class="section wrap">
+      <div class="section-kicker">01 / Идея</div>
+      <h2>Изменять осознанно.<br>Проверять воспроизводимо.</h2>
+      <p class="intro">В SedravaSQL исследуются механизмы, которые помогают избежать неожиданных изменений и оставляют проверяемую историю действий. Это инженерная цель, а не обещание абсолютной безопасности.</p>
+      <div class="grid">
+        <article class="tile"><div class="num">01 — PREVIEW</div><h3>Сначала увидеть</h3><p>План операции перед записью и подтверждение опасных действий. Удаление требует отдельного согласия.</p></article>
+        <article class="tile"><div class="num">02 — REVISION</div><h3>Не потерять изменения</h3><p>Проверка ожидаемой ревизии (CAS) отклоняет запись, если данные успели измениться.</p></article>
+        <article class="tile"><div class="num">03 — AUDIT</div><h3>Разобраться позже</h3><p>Аудит и ключи идемпотентности записываются в одной транзакции вместе с управляемым изменением.</p></article>
+      </div>
+    </section>
+    <section id="status" class="section feature"><div class="wrap">
+      <div class="section-kicker">02 / Состояние разработки</div><h2>Без обещаний вместо кода.</h2>
+      <p class="intro">Ниже — граница между подтверждёнными возможностями текущего SQLite-прототипа и тем, что пока не реализовано либо остаётся исследованием.</p>
+      <div class="split">
+        <div class="panel"><h3>Реализовано и проверяется</h3><ul class="status-list">
+          <li><span class="tick">✓</span><span>Исполняемый прототип на Rust, SQLite, WAL</span></li>
+          <li><span class="tick">✓</span><span>Ограниченный типизированный key/value API</span></li>
+          <li><span class="tick">✓</span><span>Предпросмотр, CAS и подтверждение удаления</span></li>
+          <li><span class="tick">✓</span><span>Аудит, повтор запросов по ключу идемпотентности</span></li>
+          <li><span class="tick">✓</span><span>Проверки конкурирующих записей и SQLite Backup API</span></li>
+        </ul><div class="meta-line">Объём доказательств и ограничения описаны в репозитории.</div></div>
+        <div class="panel"><h3>Пока не готово</h3><ul class="status-list">
+          <li><span class="cross">—</span><span>Произвольные SQL-запросы и полноценные реляционные схемы</span></li>
+          <li><span class="cross">—</span><span>Сетевой SQL-сервер и промышленная эксплуатация</span></li>
+          <li><span class="cross">—</span><span>Роли пользователей, репликация и шифрование</span></li>
+          <li><span class="cross">—</span><span>Гарантированное восстановление после физической потери питания</span></li>
+          <li><span class="cross">—</span><span>Стабильный API и обязательства по совместимости</span></li>
+        </ul><div class="meta-line">Не используйте текущие сборки для ценной информации.</div></div>
+      </div>
+    </div></section>
+    <section id="try" class="section wrap">
+      <div class="section-kicker">03 / Попробовать</div><h2>Прототип можно собрать.</h2>
+      <p class="intro">Для локального знакомства нужны Rust 1.85+, Cargo и C-компилятор. Команды рассчитаны на окружение с поддержкой сборки проекта.</p>
+      <div class="feature-grid">
+        <div><div class="inline-pill">Сборка из исходников</div><div class="code"><div class="code-top"><span>Terminal · Linux</span><button type="button" class="copy" id="copy-setup" aria-label="Скопировать команды сборки">Копировать</button></div><pre id="setup-code">git clone https://github.com/VasiliiBabkin/sedravasql.git
+cd sedravasql
+cargo build --locked
+cargo test --locked --all-targets
+python3 scripts/verify_local.py</pre></div><div class="caption">Скрипт проверки использует Python, но сам исполняемый файл SedravaSQL — нет.</div></div>
+        <div><h3 style="font-size:23px;letter-spacing:-.03em;margin:0 0 15px">Открытый исходный код. Проверяемые ограничения.</h3><p style="color:var(--muted);font-size:14px">Документация, архитектура, тесты и реестр утверждений опубликованы в GitHub. Можно проверить не только описание, но и конкретные сценарии испытаний.</p><div class="actions"><a class="btn secondary" href="https://github.com/VasiliiBabkin/sedravasql/blob/main/README.ru.md" target="_blank" rel="noopener noreferrer">Инструкция на русском ↗</a></div></div>
+      </div>
+    </section>
+    <section id="roadmap" class="section feature"><div class="wrap">
+      <div class="section-kicker">04 / Исследования</div><h2>Свой движок — следующий горизонт.</h2>
+      <p class="intro">Помимо действующего SQLite-прототипа развивается отдельный экспериментальный механизм хранения <strong style="color:#dbeeff">NativeLog</strong> без зависимости от SQLite. Он не заменяет действующий API и не готов для важных данных.</p>
+      <div class="process">
+        <article class="step"><em>A1</em><h3>Контракт пакетных операций</h3><p>Общий экспериментальный интерфейс транзакций и тесты для NativeLog и изолированного SQLite-адаптера.</p></article>
+        <article class="step"><em>B1</em><h3>Исследование восстановления</h3><p>План только для чтения и копирование подтверждённого префикса журнала без изменения источника.</p></article>
+        <article class="step"><em>B2</em><h3>Офлайн-копирование</h3><p>Проверяемая копия исправного остановленного журнала. Это пока не онлайн-бэкап.</p></article>
+        <article class="step"><em>B3</em><h3>Детерминированный снимок</h3><p>Детерминированный snapshot исправного остановленного журнала, содержащий состояние и историю квитанций. Это не online-checkpoint.</p></article>
+        <article class="step"><em>B4</em><h3>Восстановление в новый журнал</h3><p>Из проверенного snapshot восстанавливается побайтово исходный журнал и квитанции запросов. Без автоматического переключения базы, compaction и гарантий production.</p></article>
+      </div>
+      <div class="actions" style="margin-top:26px"><a class="btn secondary" href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/ROADMAP.md" target="_blank" rel="noopener noreferrer">Полная дорожная карта ↗</a></div>
+    </div></section>
+    <section id="docs" class="section wrap">
+      <div class="section-kicker">05 / Документация</div><h2>Смотреть исходники.<br>Сверять утверждения.</h2>
+      <p class="intro">На сайте есть краткое руководство по прототипу и экспериментальному движку. Полные контракты, ограничения и проверочные сценарии остаются в репозитории GitHub.</p>
+      <div class="links">
+        <a class="resource" href="/docs/"><span>Руководство SedravaSQL<small>Сборка, команды, Native B1–B4, безопасность и проверяемость</small></span><b class="arrow">↗</b></a>
+        <a class="resource" href="https://github.com/VasiliiBabkin/sedravasql/blob/main/README.ru.md" target="_blank" rel="noopener noreferrer"><span>Начало работы<small>Установка, команды, ограничения</small></span><b class="arrow">↗</b></a>
+        <a class="resource" href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/ARCHITECTURE.md" target="_blank" rel="noopener noreferrer"><span>Архитектура<small>Устройство прототипа</small></span><b class="arrow">↗</b></a>
+        <a class="resource" href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/VERIFICATION.md" target="_blank" rel="noopener noreferrer"><span>Проверки<small>Тестовые сценарии и доказательства</small></span><b class="arrow">↗</b></a>
+        <a class="resource" href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/CLAIMS.md" target="_blank" rel="noopener noreferrer"><span>Реестр утверждений<small>Что доказано, а что — нет</small></span><b class="arrow">↗</b></a>
+        <a class="resource" href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/SELF_HOSTED_STORAGE.ru.md" target="_blank" rel="noopener noreferrer"><span>Независимый движок<small>Rust NativeLog и его ограничения</small></span><b class="arrow">↗</b></a>
+        <a class="resource" href="https://github.com/VasiliiBabkin/sedravasql/issues" target="_blank" rel="noopener noreferrer"><span>Задачи и обсуждения<small>Вопросы, ошибки, предложения</small></span><b class="arrow">↗</b></a>
+      </div>
+    </section>
+    <section class="wrap memory" aria-labelledby="dedication-title">
+      <div class="section-kicker" id="dedication-title">Памяти</div>
+      <div class="quote">«Я посвящаю SedravaSQL его памяти — как напоминание о том, что важные начинания рождаются из любопытства, доверия и готовности пробовать новое».</div>
+      <div class="by">Из посвящения автора · <a class="textlink" href="https://github.com/VasiliiBabkin/sedravasql/blob/main/DEDICATION.md" target="_blank" rel="noopener noreferrer">Читать полностью ↗</a></div>
+    </section>
+  </main>
+  <footer class="wrap footer"><span>© 2026 SedravaSQL · Экспериментальное ПО · Apache-2.0</span><div class="footer-links"><a href="https://github.com/VasiliiBabkin/sedravasql">Исходный код</a><a href="https://github.com/VasiliiBabkin/sedravasql/blob/main/LICENSE">Лицензия</a><a href="#top">Наверх ↑</a></div></footer>
+  <script>
+    (function(){
+      var button=document.getElementById('copy-setup');
+      if(!button)return;
+      button.addEventListener('click',function(){
+        var value=document.getElementById('setup-code').innerText;
+        if(!navigator.clipboard){button.textContent='Выделите текст';return;}
+        navigator.clipboard.writeText(value).then(function(){button.textContent='Скопировано ✓';setTimeout(function(){button.textContent='Копировать';},1700);}).catch(function(){button.textContent='Выделите текст';});
+      });
+    })();
+  </script>
+</body>
+</html>
