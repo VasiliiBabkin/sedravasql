@@ -250,10 +250,20 @@ name = "sedravasql"
 version = "0.1.0-alpha.1"
 dependencies = [
  "rusqlite",
+ "sedravasql-native-engine",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
+]
+
+[[package]]
+name = "sedravasql-native-engine"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

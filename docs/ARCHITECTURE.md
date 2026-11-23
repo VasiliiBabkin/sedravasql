@@ -49,3 +49,10 @@ This project **does not** claim to understand arbitrary business intent, elimina
 - Which SQLite version, journal mode, synchronization settings, and backup API will be supported?
 
 See [roadmap](ROADMAP.md), [verification policy](VERIFICATION.md), and [primary references](REFERENCES.md).
+
+## Independent engine experiment
+
+The main library/CLI continue to use SQLite. A separate native-engine/
+crate with zero SQLite/rusqlite dependencies has a distinct append-only
+file magic and a standalone preview CLI. No silent conversion or fallback.
+See [the engine ADR](SELF_HOSTED_STORAGE.ru.md).

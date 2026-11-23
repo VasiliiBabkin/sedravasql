@@ -1,0 +1,21 @@
+[package]
+name = "sedravasql-native-engine"
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.85"
+license = "Apache-2.0"
+description = "Experimental SQLite-free append-only single-writer transaction engine"
+repository = "https://github.com/VasiliiBabkin/sedravasql"
+publish = false
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile = "3.16"
+
+[[bin]]
+name = "sedravasql-native-preview"
+path = "src/main.rs"

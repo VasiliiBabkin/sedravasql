@@ -55,3 +55,13 @@ Distributed consensus, transparent multi-node replication, complete PostgreSQL c
 A release is not 'stable', 'production-ready', 'safe', 'secure', or 'faster' unless each relevant claim has an evidence record and the scope of the test is clear.
 
 [Verification process](VERIFICATION.md) · [Claim register](CLAIMS.md).
+
+## Independent native storage (experimental)
+
+The long-term target is a standalone SedravaSQL engine that does not depend
+on SQLite, as specified in [this ADR](SELF_HOSTED_STORAGE.ru.md).
+The separate native-engine/ Rust crate is an initial single-writer,
+checksummed append-only multi-key prototype with no rusqlite dependency.
+The original SQLite API and Sedrava A5/A6 remain unchanged.
+Recovery, snapshots, compaction, on-disk indexing, schema operations,
+real-world power-loss tests and a stable API are **not implemented**.
