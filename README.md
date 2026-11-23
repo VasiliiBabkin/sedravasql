@@ -32,7 +32,12 @@ DB=/tmp/sedravasql-demo/data.sqlite
 ./target/debug/sedravasql backup "$DB" /tmp/sedravasql-demo/backup.sqlite
 ```
 
-Old revision rejects new writes. An identical repeated request returns
+Old revision rejects new writes. On Unix the database file must be owner-private (0600) and have
+exactly one hardlink; existing public-mode/hardlinked files are refused.
+Create a private parent directory. These checks are not complete
+protection from malicious same-UID directory races.
+
+An identical repeated request returns
 `"replayed":true` without another audit record. `delete` requires an
 explicit preview and `--confirm`. All mutations use parameterized SQL,
 WAL, synchronous=FULL and one atomic transaction for value, audit and

@@ -62,7 +62,7 @@ rusqlite 0.32.1. Reproduce with:
     cargo build --locked
     python3 scripts/verify_local.py
 
-Observed: four Rust integration tests PASS, real CLI tests PASS,
+Observed: five Rust integration tests PASS, real CLI tests PASS,
 12 concurrent processes (one success, 11 CAS conflicts), four
 debug-only child process fault windows around COMMIT, and SQLite
 Backup API capturing committed WAL data from a live writer.

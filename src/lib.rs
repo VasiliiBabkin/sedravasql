@@ -124,6 +124,43 @@ impl Change<'_> {
     }
 }
 
+// On Unix the managed database is a private, single-link regular file.
+// SQLite's WAL/SHM siblings inherit database access restrictions. Files
+// with public bits or multiple hardlinks are rejected rather than chmodded.
+fn inspect_database_path(path: &Path, create: bool) -> Result<()> {
+    use std::fs::{self, OpenOptions};
+    let meta = match fs::symlink_metadata(path) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound && create => {
+            let mut options = OpenOptions::new();
+            options.read(true).write(true).create_new(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            let file = options.open(path)?;
+            file.metadata()?
+        }
+        Err(e) => return Err(Error::Io(e)),
+    };
+    if !meta.is_file() || meta.file_type().is_symlink() {
+        return Err(Error::Invalid(
+            "database path must be a regular non-symlink file",
+        ));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        if meta.nlink() != 1 || meta.permissions().mode() & 0o077 != 0 {
+            return Err(Error::Invalid(
+                "database file must be private mode 0600, single hardlink",
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub struct Database {
     conn: Connection,
 }
@@ -146,13 +183,7 @@ impl Database {
         Ok(())
     }
     pub fn init(path: &Path) -> Result<Self> {
-        if let Ok(meta) = std::fs::symlink_metadata(path) {
-            if !meta.is_file() || meta.file_type().is_symlink() {
-                return Err(Error::Invalid(
-                    "database path is not a regular non-symlink file",
-                ));
-            }
-        }
+        inspect_database_path(path, true)?;
         let conn = Connection::open_with_flags(
             path,
             OpenFlags::SQLITE_OPEN_READ_WRITE
@@ -208,10 +239,7 @@ impl Database {
         Ok(Self { conn })
     }
     pub fn open(path: &Path) -> Result<Self> {
-        let meta = std::fs::symlink_metadata(path)?;
-        if !meta.is_file() || meta.file_type().is_symlink() {
-            return Err(Error::Invalid("not a regular SQLite file"));
-        }
+        inspect_database_path(path, false)?;
         let conn = Connection::open_with_flags(
             path,
             OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
