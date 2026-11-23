@@ -1,0 +1,15 @@
+{
+  "schema": "sedravasql.native.b5.1.offline-fault-input.v1",
+  "date": "2026-11-23",
+  "source_baseline": "199e920d64f3986aefcdd0b9ef2112a2ebd93063",
+  "script": "scripts/verify_native_fault_matrix_b51.py",
+  "positive_roundtrips": 5,
+  "flipped_byte_rejected": 145,
+  "truncated_rejected": 60,
+  "appended_tail_rejected": 15,
+  "preexisting_partial_untouched": 20,
+  "power_loss_tested": false,
+  "fsync_crash_tested": false,
+  "production_ready": false,
+  "note": "Preexisting-file fault matrix only; runtime code unchanged"
+}
