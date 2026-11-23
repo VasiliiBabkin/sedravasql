@@ -1,28 +1,8 @@
-# Rust build products
 /target/
-**/*.rs.bk
-
-# Local databases, WAL and backups
-*.db
-*.db-*
-*.sqlite
-*.sqlite3
-*.sqlite-*
-*.sqlite3-*
-*.bak
-*.backup
-*.dump
-
-# Secrets and local configuration
-.env
-.env.*
-!.env.example
-*.pem
-*.key
-
-# Editor and system files
-.DS_Store
-.idea/
-.vscode/
-*.swp
-*.swo
+/*.db
+/*.sqlite
+/*.sqlite3
+/*.db-*
+/*.sqlite-*
+/*.sqlite3-*
+*.tmp

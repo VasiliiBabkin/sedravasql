@@ -1,58 +1,57 @@
-# SedravaSQL
+# SedravaSQL — 0.1.0-alpha.1
 
-**Safety-first SQL database project — early design stage.**
+**Experimental embedded Rust + SQLite database with reviewable mutations.**
 
-[Русская версия](README.ru.md)
+[Русский](README.ru.md) · [Implementation contract](docs/IMPLEMENTED_V0_1.ru.md)
 
-> **Status: planning / documentation only.** There is no database engine, runnable CLI, stable API, release, installation procedure, or production-readiness claim at this time. Do not store important data in SedravaSQL.
+> **Runnable alpha, NOT production-ready.** Tested on Ubuntu x86_64.
+> This is a constrained typed key/value API, **not** a general SQL server,
+> full SQL dialect or PostgreSQL replacement. Do not store valuable data.
 
-## Purpose
+Build (Rust 1.85+, Cargo, C compiler for bundled SQLite):
 
-SedravaSQL is a proposed database system focused on verifiable data changes, explicit safety policies, understandable history, and tested recovery procedures.
+```sh
+git clone https://github.com/VasiliiBabkin/sedravasql.git
+cd sedravasql
+cargo build --locked
+cargo test --locked --all-targets
+python3 scripts/verify_local.py
+```
 
-The intended first implementation is a Rust-based layer using SQLite as its transactional storage engine. This is an **architecture proposal**, not a shipped implementation. SQL compatibility, failure guarantees, performance, and platform support will only be described as available once implemented and tested.
+Example using a separate private local directory:
 
-SedravaSQL is designed as a separate project from the [Sedrava programming language](https://github.com/VasiliiBabkin/sedrava). Language bindings may follow; the database is not intended to require Sedrava.
+```sh
+mkdir -m 700 -p /tmp/sedravasql-demo
+DB=/tmp/sedravasql-demo/data.sqlite
+./target/debug/sedravasql init "$DB"
+./target/debug/sedravasql plan-put "$DB" demo hello "Hello"
+./target/debug/sedravasql put "$DB" demo hello "Hello" \
+  --expect 0 --request-key example-request-0001
+./target/debug/sedravasql get "$DB" demo hello
+./target/debug/sedravasql verify "$DB"
+./target/debug/sedravasql backup "$DB" /tmp/sedravasql-demo/backup.sqlite
+```
 
-## Current availability
+Old revision rejects new writes. An identical repeated request returns
+`"replayed":true` without another audit record. `delete` requires an
+explicit preview and `--confirm`. All mutations use parameterized SQL,
+WAL, synchronous=FULL and one atomic transaction for value, audit and
+idempotency receipt.
 
-| Capability | Status |
-| --- | --- |
-| Design documents and project principles | In progress |
-| Rust core and executable | Not implemented |
-| SQL interface | Not implemented |
-| Preview and safety checks for bulk changes | Proposed |
-| Auditable change history | Proposed |
-| Backup verification and recovery | Proposed |
-| Stable API and releases | Not available |
-| Production use | **Not supported** |
+**Independent VDS evidence:** 4 Rust tests, native CLI integration,
+12 concurrent processes (one accepted, 11 stale-revision conflicts),
+4 injected crash stages around SQLite COMMIT, and an online backup
+containing committed WAL data from a separate live writer. These tests
+**do not prove physical power-loss durability or universal reliability**.
 
-No benchmarks or reliability results have been published.
+Features not implemented: arbitrary SQL, general relational schema,
+SQL server, replication, user roles, encryption, automatic migration,
+or production-grade crash recovery matrix.
 
-## Start here
+[Architecture](docs/ARCHITECTURE.md) · [Roadmap](docs/ROADMAP.md) ·
+[Claims](docs/CLAIMS.md) · [Verification](docs/VERIFICATION.md).
 
-- [Русское описание](README.ru.md)
-- [Scope and architecture](docs/ARCHITECTURE.md)
-- [Roadmap and acceptance criteria](docs/ROADMAP.md)
-- [Evidence and verification policy](docs/VERIFICATION.md)
-- [Claims register](docs/CLAIMS.md)
-- [Technical references](docs/REFERENCES.md)
-- [How to contribute](CONTRIBUTING.md)
-- [Security reporting](SECURITY.md)
-- [Dedication](DEDICATION.md)
+License: [Apache-2.0](LICENSE).
 
-**Installation:** there is nothing to install yet. When the first runnable version exists, this section will contain verified, copy-and-paste commands, supported platforms, expected output, and troubleshooting steps.
-
-## Honesty and evidence
-
-Project status, implemented features, measured characteristics, and external reference material must remain distinguishable. Every future reliability or performance claim should link to a reproducible procedure and dated result. See [verification policy](docs/VERIFICATION.md).
-
-## License
-
-SedravaSQL is licensed under the **Apache License, Version 2.0**, matching [Sedrava](https://github.com/VasiliiBabkin/sedrava/blob/main/LICENSE). See the complete terms in [LICENSE](LICENSE). Contributions must follow [CONTRIBUTING.md](CONTRIBUTING.md); third-party dependencies retain their own licenses.
-
-## In memory
-
-This project is dedicated to the memory of **Дмитрий Грабыльников**, a friend of the creator who shared his enthusiasm for bold, unconventional ideas.
-
-[Read the dedication](DEDICATION.md).
+Dedicated to the memory of **Дмитрий Грабыльников**.
+[Dedication](DEDICATION.md).

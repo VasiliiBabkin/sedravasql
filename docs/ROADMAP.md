@@ -14,15 +14,15 @@
 
 ## Milestone 1 — executable prototype (candidate v0.1)
 
-- [ ] Versioned Rust project with reproducible build instructions
-- [ ] Create/open database through a deliberately minimal interface
+- [x] Versioned Rust project with reproducible build instructions
+- [x] Create/open database through a deliberately minimal interface
 - [ ] Parameterized CRUD operations and basic documented SQL support
-- [ ] Explicit transaction handling; tests for commit/rollback semantics
+- [x] Explicit transaction handling; tests for commit/rollback semantics
 - [ ] First limited policy rules and mutation preview
 - [ ] Revalidate policies and target rows at transaction execution
-- [ ] Audit records committed atomically with managed changes
-- [ ] Error taxonomy and human-readable CLI diagnostics
-- [ ] Local test script with real commands and expected output
+- [x] Audit records committed atomically with managed changes
+- [x] Error taxonomy and human-readable CLI diagnostics
+- [x] Local test script with real commands and expected output
 - [ ] Publish platform support and known limitations
 
 **Acceptance gate:** external user can clone, build, run a complete example, see test results, and reproduce at least one rejected unsafe operation. No production recommendation.
@@ -31,8 +31,8 @@
 
 - [ ] Crash-injection tests across operation boundaries
 - [ ] Disk-full and I/O-failure test plan
-- [ ] Concurrent transaction and stale-preview tests
-- [ ] Verified backup-and-restore procedure using supported SQLite mechanisms
+- [x] Concurrent transaction and stale-preview tests
+- [x] Verified backup-and-restore procedure using supported SQLite mechanisms
 - [ ] Integrity checks on restored data; document what they do not detect
 - [ ] Versioned schema migration and rollback limitations
 - [ ] Publish test matrix: OS, SQLite version, filesystem, configuration, evidence
