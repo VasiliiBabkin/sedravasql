@@ -100,3 +100,12 @@ writing a NEW private SEDRLOG1. Five new Rust tests and separate CLI
 This does not implement live restore, automatic checkpoint/compaction,
 indexing or physical power-loss guarantees.
 [Operator protocol](NATIVE_RESTORE_B4.ru.md).
+
+### Native B5.1 offline fault-input matrix (2026-11-23)
+
+A child-process CLI matrix checks 5 positive exact restore/replay
+roundtrips, 145 flipped-byte, 60 truncated, 15 appended-tail snapshots,
+and 20 existing partial output files. All rejection rules PASS.
+This is OFFLINE file corruption testing, not proof of real power-loss
+recovery, online checkpoint, compaction, or indexing.
+[RU protocol](NATIVE_FAULT_MATRIX_B51.ru.md).

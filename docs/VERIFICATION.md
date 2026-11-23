@@ -115,3 +115,10 @@ Ubuntu Linux x86_64, Rust/Cargo 1.100.0, VDS. NativeLog and opt-in SqliteBatchSt
 ### 2026-11-23 — Native recovery B1 verification
 
 4 additional native integration tests cover truncated length/payload/checksum, refuse complete-frame corruption, verify SHA-256, preserve source files, reject locked/preexisting paths, and replay multiple retained receipts. Separate child-process CLI smoke uses debug crashes before and after sync_all. No power-loss or production recovery claim. See [protocol](NATIVE_RECOVERY_COPY_B1.ru.md).
+
+## B5.1 native damaged-file matrix
+
+[Reproduction and limits](NATIVE_FAULT_MATRIX_B51.ru.md):
+5 restored log roundtrips, 145 flipped bytes, 60 truncated inputs,
+15 extra-tail inputs and 20 pre-existing partial targets. No
+SIGKILL-while-fsync or physical power-loss testing performed.

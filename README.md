@@ -83,3 +83,7 @@ No restore, checkpoint, fast startup, compaction or production use.
 Experimental B4: operator-approved [restore from a verified snapshot](docs/NATIVE_RESTORE_B4.ru.md) to a NEW byte-identical native log. Preserves receipts and CAS history; no in-place replacement, online restore, compaction or production guarantee.
 
 **Project website:** https://sql.virtreal.ru/ · [Russian getting-started guide](https://sql.virtreal.ru/docs/). Static site sources and deployment verification are in [site/](site/README.md); no live database endpoint is published.
+
+B5.1 research: [offline fault-input matrix](docs/NATIVE_FAULT_MATRIX_B51.ru.md)
+for B3/B4 exact restore and corrupt, truncated or extended snapshots.
+No actual process crash/power-loss verification.
