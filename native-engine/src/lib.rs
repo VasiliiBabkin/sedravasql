@@ -511,6 +511,7 @@ impl TransactionalStore for NativeLog {
             self.file.write_all(&len)?;
             debug_fault("after_length", &self.file);
             self.file.write_all(&payload)?;
+            debug_fault("after_payload", &self.file);
             self.file.write_all(&checksum)?;
             self.file.sync_all()?;
             debug_fault("after_sync", &self.file);
@@ -533,9 +534,9 @@ impl TransactionalStore for NativeLog {
 }
 
 /// Debug-only crash injection for disposable test files. Never enabled in
-/// release builds. The after_length fault writes a torn, synced frame and
-/// intentionally leaves a stale lock. after_sync simulates a lost HTTP reply
-/// after a complete persisted transaction.
+/// release builds. after_length and after_payload create synced *torn*
+/// final frames with stale locks. after_sync simulates a lost HTTP response
+/// after a complete durable transaction. This is NOT hardware power-loss.
 #[cfg(debug_assertions)]
 fn debug_fault(point: &str, file: &File) {
     if std::env::var("SEDRAVASQL_NATIVE_TEST_FAULT")

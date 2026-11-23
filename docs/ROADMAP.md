@@ -109,3 +109,13 @@ and 20 existing partial output files. All rejection rules PASS.
 This is OFFLINE file corruption testing, not proof of real power-loss
 recovery, online checkpoint, compaction, or indexing.
 [RU protocol](NATIVE_FAULT_MATRIX_B51.ru.md).
+
+### Native B5.2 controlled process exits (2026-11-24)
+
+Adds an after_payload DEBUG-only fault hook alongside existing
+after_length and after_sync. Twenty-four child process exits
+(8 per hook) PASS. Sixteen torn final frames remain invalid
+and require operator-approved B1 copy; eight fully synced
+commits preserve idempotency and accept further writes.
+No physical power-loss, online recovery, compaction or index.
+See NATIVE_CRASH_B52.ru.md.

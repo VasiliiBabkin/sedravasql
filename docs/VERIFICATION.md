@@ -122,3 +122,11 @@ Ubuntu Linux x86_64, Rust/Cargo 1.100.0, VDS. NativeLog and opt-in SqliteBatchSt
 5 restored log roundtrips, 145 flipped bytes, 60 truncated inputs,
 15 extra-tail inputs and 20 pre-existing partial targets. No
 SIGKILL-while-fsync or physical power-loss testing performed.
+
+## Native B5.2 controlled process-exit matrix
+
+Run scripts/verify_native_crash_b52.py with a DEBUG native preview
+binary on disposable files. Eight tests each at after_length,
+after_payload and after_sync; controlled exit 86 and verified stale
+lock ownership. B1 recovery and exact idempotent replay PASS.
+Hardware power-loss is NOT tested. Details: NATIVE_CRASH_B52.ru.md.
