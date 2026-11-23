@@ -1,0 +1,11 @@
+{
+  "project": "SedravaSQL",
+  "website": "https://sql.virtreal.ru/",
+  "current_public_alpha": "0.1.0-alpha.1",
+  "experimental_native_engine": "B4",
+  "base_repository": "https://github.com/VasiliiBabkin/sedravasql",
+  "basis_commit": "3ae59dc797c2af80756e32eeafa48eefd0db6b9c",
+  "production_ready": false,
+  "notes": "Metadata reflects reviewed repository state on 2026-11-23; not a live test/availability feed.",
+  "docs": "/docs/"
+}
