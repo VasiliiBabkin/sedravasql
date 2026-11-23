@@ -87,3 +87,8 @@ Experimental B4: operator-approved [restore from a verified snapshot](docs/NATIV
 B5.1 research: [offline fault-input matrix](docs/NATIVE_FAULT_MATRIX_B51.ru.md)
 for B3/B4 exact restore and corrupt, truncated or extended snapshots.
 No actual process crash/power-loss verification.
+
+Experimental B5.2: 24 controlled NativeLog process exits
+at three debug-only write boundaries; torn frames rejected and
+synced receipts replayed. Not hardware power-loss validation.
+See docs/NATIVE_CRASH_B52.ru.md.

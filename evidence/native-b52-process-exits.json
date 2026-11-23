@@ -1,0 +1,16 @@
+{
+  "schema": "sedravasql.native.b52.process-exit.v1",
+  "date": "2026-11-24",
+  "script": "scripts/verify_native_crash_b52.py",
+  "faults": [
+    "after_length",
+    "after_payload",
+    "after_sync"
+  ],
+  "iterations_per_fault": 8,
+  "process_exits_tested": 24,
+  "torn_journals_rejected_and_recovered_to_new_file": 16,
+  "synced_commits_replayed_after_lost_response": 8,
+  "real_power_loss_tested": false,
+  "production_ready": false
+}
