@@ -15,7 +15,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 /// Experimental gate to avoid scanning unlimited files during recovery.
-const MAX_REPAIR_INPUT_BYTES: u64 = 64 * 1024 * 1024;
+pub(crate) const MAX_REPAIR_INPUT_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RecoveryPlan {
@@ -34,7 +34,7 @@ fn lock_path(path: &Path) -> Result<PathBuf> {
     name.push(".lock");
     Ok(path.with_file_name(name))
 }
-fn require_idle_source(path: &Path) -> Result<()> {
+pub(crate) fn require_idle_source(path: &Path) -> Result<()> {
     private_parent(path)?;
     private_file(path)?;
     // The operator must first establish that the previous writer has
@@ -110,7 +110,7 @@ fn scan(file: &mut File) -> Result<(Replay, u64)> {
     }
 }
 
-fn file_sha256(file: &mut File) -> Result<String> {
+pub(crate) fn file_sha256(file: &mut File) -> Result<String> {
     file.seek(SeekFrom::Start(0))?;
     let mut hash = Sha256::new();
     let mut buf = [0u8; 8192];

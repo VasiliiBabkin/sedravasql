@@ -73,3 +73,12 @@ The experimental SQLite-free NativeLog and an explicit legacy-isolated SQLite ad
 ### Native recovery B1 (experimental)
 
 An operator-gated read-only recovery plan and copy-only verified-prefix extraction have been implemented. Complete bad checksums always fail closed; no automatic stale-lock cleanup or source truncation. This is not production recovery or physical power-loss proof. See [protocol](NATIVE_RECOVERY_COPY_B1.ru.md).
+
+### Native B2 offline copy (experimental, 2026-11-23)
+
+The operator-approved backup-plan / backup-copy interface creates and
+validates a byte-identical NEW file from a fully verified idle native
+journal. B1 recovery remains independent. Five new Rust tests plus
+a separate child-process CLI suite PASS. Not live backup, checkpoint,
+production restore or physical power-loss assurance.
+[Protocol (RU)](NATIVE_BACKUP_B2.ru.md).
