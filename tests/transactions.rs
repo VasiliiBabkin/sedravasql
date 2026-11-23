@@ -184,3 +184,25 @@ fn sqlite_foreign_schema_rejected_without_overwrite() {
         .unwrap();
     assert_eq!(s, "keep");
 }
+
+#[cfg(unix)]
+#[test]
+fn sqlite_db_file_rejects_public_modes_and_hardlinks() {
+    use std::os::unix::fs::PermissionsExt;
+    let temp = tempdir().unwrap();
+    let file = temp.path().join("secure.sqlite");
+    let _db = Database::init(&file).unwrap();
+    let meta = std::fs::metadata(&file).unwrap();
+    assert_eq!(meta.permissions().mode() & 0o077, 0);
+    drop(_db);
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+    assert!(Database::open(&file).is_err());
+    assert!(Database::init(&file).is_err());
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let link = temp.path().join("hardlink.sqlite");
+    std::fs::hard_link(&file, &link).unwrap();
+    assert!(Database::open(&file).is_err());
+    assert!(Database::init(&file).is_err());
+    std::fs::remove_file(link).unwrap();
+    assert!(Database::open(&file).is_ok());
+}
