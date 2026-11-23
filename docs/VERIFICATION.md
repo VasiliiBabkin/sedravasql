@@ -69,3 +69,16 @@ Backup API capturing committed WAL data from a live writer.
 Tests create and remove temporary files. They do not prove power-loss
 durability, performance, encryption, cross-OS behavior or production
 security. Optimized release does not activate fault injection.
+
+## 2026-11-23 — приложение: durable response API
+
+Исходная база: b5831d7c5961042ff37feaaf4b4fef59b81b5f64.
+На Ubuntu x86_64, Rust/Cargo 1.100.0 выполнены
+`cargo fmt --all -- --check`,
+`cargo test --locked --offline --all-targets`.
+Итог: **6 интеграционных тестов PASS**; новый тест сохраняет 45
+последовательных ответов, проверяет старые ключи, перезапуск,
+точный replay и отказ от конфликтующего повторного запроса.
+Тесты выполнялись в временных каталогах; публичные порты и
+производственные данные не затрагивались. GitHub Actions не использованы.
+Power-loss и долговременное хранение не подтверждены.

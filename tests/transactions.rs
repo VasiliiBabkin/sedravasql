@@ -206,3 +206,54 @@ fn sqlite_db_file_rejects_public_modes_and_hardlinks() {
     std::fs::remove_file(link).unwrap();
     assert!(Database::open(&file).is_ok());
 }
+
+#[test]
+fn durable_application_responses_survive_restart_and_do_not_evict_at_32() {
+    let dir = tempdir().unwrap();
+    let file = dir.path().join("replay.sqlite");
+    let mut db = Database::init(&file).unwrap();
+    for index in 0..45 {
+        let key = format!("request-app-{index:06}");
+        let body = format!(r#"{{"count":{}}}"#, index + 1);
+        let result = db
+            .mutate_with_response("server_a6", "state", Change::Put(&body), index, &key, &body)
+            .unwrap();
+        assert_eq!(result.revision, index + 1);
+        assert_eq!(result.application_response.as_deref(), Some(body.as_str()));
+        let previous = db.lookup_receipt("server_a6", &key).unwrap().unwrap();
+        assert_eq!(
+            previous.application_response.as_deref(),
+            Some(body.as_str())
+        );
+        let duplicate = db
+            .mutate_with_response("server_a6", "state", Change::Put(&body), index, &key, &body)
+            .unwrap();
+        assert!(duplicate.replayed);
+        assert!(db
+            .mutate_with_response(
+                "server_a6",
+                "state",
+                Change::Put("different"),
+                index,
+                &key,
+                &body
+            )
+            .is_err());
+    }
+    db.verify().unwrap();
+    drop(db);
+    let db = Database::open(&file).unwrap();
+    assert_eq!(db.read("server_a6", "state").unwrap().unwrap().revision, 45);
+    assert!(db
+        .lookup_receipt("server_a6", "request-app-000000")
+        .unwrap()
+        .is_some());
+    assert!(db
+        .lookup_receipt("server_a6", "request-app-000044")
+        .unwrap()
+        .is_some());
+    assert!(db
+        .lookup_receipt("server_a6", "missing-key-000000")
+        .unwrap()
+        .is_none());
+}
