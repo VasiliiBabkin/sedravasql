@@ -75,3 +75,7 @@ The initial experimental [shared batch transaction contract](docs/BATCH_CONTRACT
 Experimental B1: [read-only recovery plan and verified-prefix copy](docs/NATIVE_RECOVERY_COPY_B1.ru.md) for the separate native engine. Never mutates the source or removes stale locks. No production recovery claim.
 
 Experimental B2: [operator-approved offline copy of a healthy native log](docs/NATIVE_BACKUP_B2.ru.md). It does not provide a production backup, checkpoint or online snapshot.
+
+Experimental B3: [read-only deterministic native snapshot](docs/NATIVE_SNAPSHOT_B3.ru.md)
+of a stopped, fully verified log, preserving entries and receipts.
+No restore, checkpoint, fast startup, compaction or production use.

@@ -17,7 +17,7 @@ pub struct BackupPlan {
 }
 
 #[cfg(unix)]
-fn same_file(handle: &File, path: &Path) -> Result<()> {
+pub(crate) fn same_file(handle: &File, path: &Path) -> Result<()> {
     use std::os::unix::fs::MetadataExt;
     let a = handle.metadata()?;
     let b = fs::symlink_metadata(path)?;
@@ -27,7 +27,7 @@ fn same_file(handle: &File, path: &Path) -> Result<()> {
     Ok(())
 }
 #[cfg(not(unix))]
-fn same_file(_handle: &File, _path: &Path) -> Result<()> {
+pub(crate) fn same_file(_handle: &File, _path: &Path) -> Result<()> {
     Err(Error::Invalid("backup: supported only on Unix preview"))
 }
 

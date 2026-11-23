@@ -82,3 +82,11 @@ journal. B1 recovery remains independent. Five new Rust tests plus
 a separate child-process CLI suite PASS. Not live backup, checkpoint,
 production restore or physical power-loss assurance.
 [Protocol (RU)](NATIVE_BACKUP_B2.ru.md).
+
+### Native snapshot B3 (experimental, 2026-11-23)
+
+SEDRSNP1 materializes sorted entries and idempotency receipts from a
+complete idle native log to a new private file using an operator-approved
+SHA-256. Independent verification, five Rust tests and child-process CLI
+tests PASS. **Not** a writable restore, checkpoint, online backup,
+compaction, or disk index. [Protocol](NATIVE_SNAPSHOT_B3.ru.md).
