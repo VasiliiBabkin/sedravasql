@@ -91,6 +91,10 @@ pub struct Receipt {
     pub operation: String,
     pub value_sha256: String,
     pub replayed: bool,
+    /// Optional opaque, size-limited JSON response stored in the same SQL transaction.
+    /// Its bytes also participate in the idempotency fingerprint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub application_response: Option<String>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Audit {
@@ -323,6 +327,40 @@ impl Database {
             needs_confirmation: matches!(change, Change::Delete { .. }),
         })
     }
+    /// Read a stored request receipt without mutating the database.
+    /// The receipt is never evicted automatically. Callers must maintain
+    /// their own bounded operational storage and recovery policy.
+    pub fn lookup_receipt(&self, namespace: &str, request_key: &str) -> Result<Option<Receipt>> {
+        if !valid_id(namespace) || !valid_request(request_key) {
+            return Err(Error::Invalid("invalid namespace or request key"));
+        }
+        let row: Option<(i64, String)> = self
+            .conn
+            .query_row(
+                "SELECT audit_id,response_json FROM receipts WHERE namespace=?1 AND request_key=?2",
+                params![namespace, request_key],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        row.map(|(id, body)| {
+            let receipt: Receipt = serde_json::from_str(&body)
+                .map_err(|_| Error::Unsupported("corrupted stored receipt JSON".into()))?;
+            if receipt.audit_id != id
+                || receipt.namespace != namespace
+                || receipt.replayed
+                || receipt
+                    .application_response
+                    .as_deref()
+                    .is_some_and(|s| s.len() > 16_384)
+            {
+                return Err(Error::Unsupported("inconsistent stored receipt".into()));
+            }
+            Ok(receipt)
+        })
+        .transpose()
+    }
+
+    /// Backward-compatible original mutation API (v1 fingerprints).
     pub fn mutate(
         &mut self,
         namespace: &str,
@@ -330,6 +368,48 @@ impl Database {
         change: Change<'_>,
         expected_revision: u64,
         request_key: &str,
+    ) -> Result<Receipt> {
+        self.mutate_inner(namespace, key, change, expected_revision, request_key, None)
+    }
+
+    /// Atomically commit managed state, audit, a durable request key and a
+    /// caller-supplied bounded JSON response. No partial response is published.
+    /// The receipt is immutable: there is no automatic TTL or eviction.
+    pub fn mutate_with_response(
+        &mut self,
+        namespace: &str,
+        key: &str,
+        change: Change<'_>,
+        expected_revision: u64,
+        request_key: &str,
+        response_json: &str,
+    ) -> Result<Receipt> {
+        if response_json.is_empty()
+            || response_json.len() > 16_384
+            || serde_json::from_str::<serde_json::Value>(response_json).is_err()
+        {
+            return Err(Error::Invalid(
+                "response must be valid JSON within 16384 bytes",
+            ));
+        }
+        self.mutate_inner(
+            namespace,
+            key,
+            change,
+            expected_revision,
+            request_key,
+            Some(response_json),
+        )
+    }
+
+    fn mutate_inner(
+        &mut self,
+        namespace: &str,
+        key: &str,
+        change: Change<'_>,
+        expected_revision: u64,
+        request_key: &str,
+        application_response: Option<&str>,
     ) -> Result<Receipt> {
         if !valid_id(namespace) || !valid_id(key) {
             return Err(Error::Invalid("invalid namespace or key"));
@@ -348,17 +428,32 @@ impl Database {
         }
         let operation = change.operation();
         let new_value = change.value();
-        let fingerprint = digest(
-            &serde_json::to_vec(&(
-                "sedravasql.mutation.v1",
-                namespace,
-                key,
-                operation,
-                new_value,
-                expected_revision,
-            ))
-            .expect("static serde tuple"),
-        );
+        let fingerprint = if let Some(reply) = application_response {
+            digest(
+                &serde_json::to_vec(&(
+                    "sedravasql.mutation.with-response.v1",
+                    namespace,
+                    key,
+                    operation,
+                    new_value,
+                    expected_revision,
+                    reply,
+                ))
+                .expect("static serde tuple"),
+            )
+        } else {
+            digest(
+                &serde_json::to_vec(&(
+                    "sedravasql.mutation.v1",
+                    namespace,
+                    key,
+                    operation,
+                    new_value,
+                    expected_revision,
+                ))
+                .expect("static serde tuple"),
+            )
+        };
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -420,6 +515,7 @@ impl Database {
             operation: operation.into(),
             value_sha256: newhash,
             replayed: false,
+            application_response: application_response.map(str::to_owned),
         };
         let response_json =
             serde_json::to_string(&receipt).map_err(|_| Error::Invalid("cannot encode receipt"))?;
