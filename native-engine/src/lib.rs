@@ -116,7 +116,8 @@ fn valid_id(s: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
 }
 
-fn validate(request_key: &str, ops: &[NativeMutation]) -> Result<()> {
+/// Shared experimental request validation; keep both storage backends aligned.
+pub fn validate_batch(request_key: &str, ops: &[NativeMutation]) -> Result<()> {
     if request_key.len() < 12 || !valid_id(request_key) {
         return Err(Error::Invalid("native log: invalid idempotency key"));
     }
@@ -147,14 +148,16 @@ fn validate(request_key: &str, ops: &[NativeMutation]) -> Result<()> {
     Ok(())
 }
 
-fn fingerprint(ops: &[NativeMutation]) -> Result<String> {
+/// Shared experimental canonical fingerprint (also used by the SQLite batch adapter).
+/// Input order is significant and deliberately not normalized.
+pub fn batch_fingerprint(ops: &[NativeMutation]) -> Result<String> {
     let encoded = serde_json::to_vec(&("sedravasql.native-batch.v1", ops))
         .map_err(|_| Error::Invalid("native log: encoding failed"))?;
     Ok(format!("{:x}", Sha256::digest(encoded)))
 }
 
 fn step(state: &Replay, request_key: &str, ops: &[NativeMutation]) -> Result<Replay> {
-    validate(request_key, ops)?;
+    validate_batch(request_key, ops)?;
     if state.receipts.contains_key(request_key) {
         return Err(Error::Unsupported(
             "native log: duplicate stored request in frame".into(),
@@ -198,7 +201,7 @@ fn step(state: &Replay, request_key: &str, ops: &[NativeMutation]) -> Result<Rep
     next.receipts.insert(
         request_key.to_owned(),
         (
-            fingerprint(ops)?,
+            batch_fingerprint(ops)?,
             NativeCommit {
                 sequence: seq,
                 entries,
@@ -470,8 +473,8 @@ impl TransactionalStore for NativeLog {
                 "native log: previous write uncertain".into(),
             ));
         }
-        validate(request_key, ops)?;
-        let fp = fingerprint(ops)?;
+        validate_batch(request_key, ops)?;
+        let fp = batch_fingerprint(ops)?;
         if let Some((stored, receipt)) = self.state.receipts.get(request_key) {
             if stored != &fp {
                 return Err(Error::Conflict(

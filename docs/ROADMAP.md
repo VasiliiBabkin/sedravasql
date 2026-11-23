@@ -65,3 +65,7 @@ checksummed append-only multi-key prototype with no rusqlite dependency.
 The original SQLite API and Sedrava A5/A6 remain unchanged.
 Recovery, snapshots, compaction, on-disk indexing, schema operations,
 real-world power-loss tests and a stable API are **not implemented**.
+
+## Batch Transaction Contract A1 (2026-11-23)
+
+The experimental SQLite-free NativeLog and an explicit legacy-isolated SQLite adapter now implement one unstable multi-key TransactionalStore interface. Same test corpus checks atomic 1..16-key batches, CAS, delete/tombstones, idempotent replay and 46 sequential commits on both. The original SQLite Database API and Sedrava Server A6 have not been migrated. See [contract, verification and limitations](BATCH_CONTRACT_A1.ru.md). Production NO-GO; issue #9 still open.

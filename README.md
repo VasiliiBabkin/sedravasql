@@ -69,3 +69,5 @@ durable request keys and a standalone preview CLI. This is **not** a
 release, general SQL implementation, or safe replacement for the existing
 SQLite-backed Database API. Do **not** use it for valuable data.
 [Architecture, limitations and verification commands (RU)](docs/SELF_HOSTED_STORAGE.ru.md).
+
+The initial experimental [shared batch transaction contract](docs/BATCH_CONTRACT_A1.ru.md) now runs on the SQLite-free NativeLog and an explicit isolated SQLite adapter, with one cross-backend test suite. The established SQLite API and Sedrava A6 are unchanged.
