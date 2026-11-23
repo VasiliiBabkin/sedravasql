@@ -82,3 +82,28 @@ security. Optimized release does not activate fault injection.
 Тесты выполнялись в временных каталогах; публичные порты и
 производственные данные не затрагивались. GitHub Actions не использованы.
 Power-loss и долговременное хранение не подтверждены.
+
+
+## 2026-11-23 — SQLite-free native engine experimental slice
+
+A new **separate Rust crate** native-engine/ has no rusqlite/SQLite
+dependency. Verification commands on Ubuntu x86_64 / Rust 1.100.0:
+
+    cargo fmt --manifest-path native-engine/Cargo.toml --all -- --check
+    cargo test --manifest-path native-engine/Cargo.toml --locked --offline --all-targets
+    cargo test --locked --offline --all-targets
+    cargo build --manifest-path native-engine/Cargo.toml --locked --offline --bin sedravasql-native-preview
+    python3 scripts/verify_native_log.py
+
+PASS: 8 native-engine integration tests, 1 SQLite/native-format
+isolation test, 6 existing SQLite integration tests.
+The separate CLI smoke test wrote two keys in one batch, checked
+replay/CAS across independent child processes and two debug-only forced
+exits around append: incomplete frame rejected without automatic
+truncation, complete synced frame replayed after simulated lost reply.
+Everything used private temporary directories, no real data or network
+listener; the original Sedrava A6 code remains unchanged.
+
+This does not prove physical power-loss durability, resource limits,
+automatic recovery, stable on-disk format or production use.
+See [architecture ADR](SELF_HOSTED_STORAGE.ru.md).

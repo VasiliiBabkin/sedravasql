@@ -60,3 +60,12 @@ License: [Apache-2.0](LICENSE).
 
 Dedicated to the memory of **Дмитрий Грабыльников**.
 [Dedication](DEDICATION.md).
+
+## Experimental SQLite-free engine
+
+A separate [native-engine crate](native-engine/) implements a small local
+single-writer append-only log with bounded atomic batches, CAS revisions,
+durable request keys and a standalone preview CLI. This is **not** a
+release, general SQL implementation, or safe replacement for the existing
+SQLite-backed Database API. Do **not** use it for valuable data.
+[Architecture, limitations and verification commands (RU)](docs/SELF_HOSTED_STORAGE.ru.md).

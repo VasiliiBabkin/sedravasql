@@ -2,6 +2,8 @@
 //! SQLite provides the WAL, isolation, transaction atomicity and online backup.
 //! No claim of physical power-loss testing, encryption, distributed SQL or
 //! protection against a malicious process able to rewrite the same DB files.
+pub use sedravasql_native_engine as native_log;
+
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -175,7 +177,7 @@ impl Database {
             "PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL; PRAGMA trusted_schema=OFF;",
         )?;
         let mode: String = conn.query_row("PRAGMA journal_mode=WAL", [], |r| r.get(0))?;
-        if mode.to_ascii_lowercase() != "wal" {
+        if !mode.eq_ignore_ascii_case("wal") {
             return Err(Error::Unsupported("WAL mode unavailable".into()));
         }
         let sync: i64 = conn.query_row("PRAGMA synchronous", [], |r| r.get(0))?;
