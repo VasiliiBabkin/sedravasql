@@ -72,8 +72,10 @@ def run():
                 if digest(old)!=digest(to):raise RuntimeError("Backup checksum mismatch")
         for name in FILES:
             to=DEST/name
-            to.parent.mkdir(parents=True,exist_ok=True)
-            if to.parent.stat().st_uid!=site.pw_uid:
+            if not to.parent.exists():
+                to.parent.mkdir(parents=False,exist_ok=False)
+                os.chown(to.parent,site.pw_uid,site.pw_gid)
+            if to.parent.is_symlink() or to.parent.stat().st_uid!=site.pw_uid:
                 raise RuntimeError("Wrong target directory owner")
             safe_file(to,True,site.pw_uid)
             staged=to.with_name("."+to.name+".stage-"+str(os.getpid()))
