@@ -3,9 +3,11 @@
 //! This is a native *storage engine prototype*, not a public DB or a safe
 //! replacement for the existing SQLite backend. It uses one checksummed frame
 //! per atomic in-memory batch. Commit is acknowledged only after sync_all.
-//! Torn/corrupt frames always fail closed; explicit repair and backups are
-//! future work. A stale .lock after a crash must be handled by an operator.
+//! Torn/corrupt frames always fail closed; B1 recovery-prefix copying and
+//! B2 offline backup are opt-in experiments, not production recovery.
+//! A stale .lock after a crash must be handled by an operator.
 //! Do not store irreplaceable data here.
+pub mod backup;
 pub mod recovery;
 
 use std::error::Error as StdError;

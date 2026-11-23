@@ -1,11 +1,12 @@
 //! Explicitly experimental CLI for the SQLite-free SedravaSQL append-log.
 //! NOT the existing stable or alpha SQLite CLI. Do not use for valuable data.
+use sedravasql_native_engine::backup::{backup_to_new_file, plan_backup};
 use sedravasql_native_engine::recovery::{plan_recovery, recover_to_new_file};
 use sedravasql_native_engine::{NativeLog, NativeMutation, TransactionalStore};
 use std::{env, error::Error, fs, path::Path};
 
 fn usage() -> &'static str {
-    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | batch FILE REQUEST_KEY JSON_FILE | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256>\n\
+    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | batch FILE REQUEST_KEY JSON_FILE | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256 | backup-plan SOURCE | backup-copy SOURCE DEST EXPECTED_SHA256>\n\
      EXPERIMENTAL / SINGLE WRITER / NO AUTOMATIC RECOVERY / NOT FOR VALUABLE DATA"
 }
 fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
@@ -21,6 +22,14 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
         }
         [_, cmd, source, destination, digest] if cmd == "recovery-copy" => {
             let plan = recover_to_new_file(Path::new(source), Path::new(destination), digest)?;
+            println!("{}", serde_json::to_string(&plan)?);
+        }
+        [_, cmd, file] if cmd == "backup-plan" => {
+            let plan = plan_backup(Path::new(file))?;
+            println!("{}", serde_json::to_string(&plan)?);
+        }
+        [_, cmd, source, destination, digest] if cmd == "backup-copy" => {
+            let plan = backup_to_new_file(Path::new(source), Path::new(destination), digest)?;
             println!("{}", serde_json::to_string(&plan)?);
         }
         [_, cmd, file] if cmd == "verify" => {
