@@ -2,12 +2,13 @@
 //! NOT the existing stable or alpha SQLite CLI. Do not use for valuable data.
 use sedravasql_native_engine::backup::{backup_to_new_file, plan_backup};
 use sedravasql_native_engine::recovery::{plan_recovery, recover_to_new_file};
+use sedravasql_native_engine::restore::restore_to_new_file;
 use sedravasql_native_engine::snapshot::{create_snapshot, verify_snapshot};
 use sedravasql_native_engine::{NativeLog, NativeMutation, TransactionalStore};
 use std::{env, error::Error, fs, path::Path};
 
 fn usage() -> &'static str {
-    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | batch FILE REQUEST_KEY JSON_FILE | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256 | backup-plan SOURCE | backup-copy SOURCE DEST EXPECTED_SHA256 | snapshot-create SOURCE DEST EXPECTED_SHA256 | snapshot-verify SNAPSHOT>\n\
+    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | batch FILE REQUEST_KEY JSON_FILE | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256 | backup-plan SOURCE | backup-copy SOURCE DEST EXPECTED_SHA256 | snapshot-create SOURCE DEST EXPECTED_SHA256 | snapshot-verify SNAPSHOT | restore-copy SNAPSHOT NEW_DEST APPROVED_SNAPSHOT_SHA256>\n\
      EXPERIMENTAL / SINGLE WRITER / NO AUTOMATIC RECOVERY / NOT FOR VALUABLE DATA"
 }
 fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
@@ -47,6 +48,16 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
             println!(
                 "{}",
                 serde_json::to_string(&verify_snapshot(Path::new(file))?)?
+            );
+        }
+        [_, cmd, snapshot, dest, approved] if cmd == "restore-copy" => {
+            println!(
+                "{}",
+                serde_json::to_string(&restore_to_new_file(
+                    Path::new(snapshot),
+                    Path::new(dest),
+                    approved
+                )?)?
             );
         }
         [_, cmd, file] if cmd == "verify" => {

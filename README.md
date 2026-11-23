@@ -79,3 +79,5 @@ Experimental B2: [operator-approved offline copy of a healthy native log](docs/N
 Experimental B3: [read-only deterministic native snapshot](docs/NATIVE_SNAPSHOT_B3.ru.md)
 of a stopped, fully verified log, preserving entries and receipts.
 No restore, checkpoint, fast startup, compaction or production use.
+
+Experimental B4: operator-approved [restore from a verified snapshot](docs/NATIVE_RESTORE_B4.ru.md) to a NEW byte-identical native log. Preserves receipts and CAS history; no in-place replacement, online restore, compaction or production guarantee.
