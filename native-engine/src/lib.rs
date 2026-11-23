@@ -6,6 +6,8 @@
 //! Torn/corrupt frames always fail closed; explicit repair and backups are
 //! future work. A stale .lock after a crash must be handled by an operator.
 //! Do not store irreplaceable data here.
+pub mod recovery;
+
 use std::error::Error as StdError;
 use std::fmt;
 

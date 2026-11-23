@@ -71,3 +71,5 @@ SQLite-backed Database API. Do **not** use it for valuable data.
 [Architecture, limitations and verification commands (RU)](docs/SELF_HOSTED_STORAGE.ru.md).
 
 The initial experimental [shared batch transaction contract](docs/BATCH_CONTRACT_A1.ru.md) now runs on the SQLite-free NativeLog and an explicit isolated SQLite adapter, with one cross-backend test suite. The established SQLite API and Sedrava A6 are unchanged.
+
+Experimental B1: [read-only recovery plan and verified-prefix copy](docs/NATIVE_RECOVERY_COPY_B1.ru.md) for the separate native engine. Never mutates the source or removes stale locks. No production recovery claim.

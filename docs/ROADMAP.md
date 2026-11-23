@@ -69,3 +69,7 @@ real-world power-loss tests and a stable API are **not implemented**.
 ## Batch Transaction Contract A1 (2026-11-23)
 
 The experimental SQLite-free NativeLog and an explicit legacy-isolated SQLite adapter now implement one unstable multi-key TransactionalStore interface. Same test corpus checks atomic 1..16-key batches, CAS, delete/tombstones, idempotent replay and 46 sequential commits on both. The original SQLite Database API and Sedrava Server A6 have not been migrated. See [contract, verification and limitations](BATCH_CONTRACT_A1.ru.md). Production NO-GO; issue #9 still open.
+
+### Native recovery B1 (experimental)
+
+An operator-gated read-only recovery plan and copy-only verified-prefix extraction have been implemented. Complete bad checksums always fail closed; no automatic stale-lock cleanup or source truncation. This is not production recovery or physical power-loss proof. See [protocol](NATIVE_RECOVERY_COPY_B1.ru.md).

@@ -111,3 +111,7 @@ See [architecture ADR](SELF_HOSTED_STORAGE.ru.md).
 ## 2026-11-23 — shared batch transaction contract A1
 
 Ubuntu Linux x86_64, Rust/Cargo 1.100.0, VDS. NativeLog and opt-in SqliteBatchStore implement the same TransactionalStore interface. Tests (tests/batch_conformance.rs) cover 46 equal multi-key/single-key responses on both, replay after restart, CAS and ABA, integrity of SQLite per-key audit/receipt, 8 competing SQLite writer handles and SQLite Online Backup API. Formatting, locked offline cargo tests, native-engine dependency-free-of-SQLite check, and clippy with -D warnings were run. No production data or web services changed; no GitHub Actions time consumed. The original SQLite API tests and native CLI crash tests remain passing. This does not establish physical power-loss guarantees, production recovery, or schema migration. See [Batch Contract A1](BATCH_CONTRACT_A1.ru.md).
+
+### 2026-11-23 — Native recovery B1 verification
+
+4 additional native integration tests cover truncated length/payload/checksum, refuse complete-frame corruption, verify SHA-256, preserve source files, reject locked/preexisting paths, and replay multiple retained receipts. Separate child-process CLI smoke uses debug crashes before and after sync_all. No power-loss or production recovery claim. See [protocol](NATIVE_RECOVERY_COPY_B1.ru.md).
