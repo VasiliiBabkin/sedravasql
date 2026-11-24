@@ -2,6 +2,10 @@
 
 **Status:** proposed milestones. These are not releases, commitments, or dates. Completion must be demonstrated by tests and documented commands.
 
+## Current checkpoint
+
+[Verified B31 development status](DEVELOPMENT_STATUS.en.md) · [Русский](DEVELOPMENT_STATUS.ru.md). B26–B28 integrated in main; B29–B31 separate research. Next B32 safe page reclamation, followed by durable receipts, migration and SQL integration gates. Earlier milestone lists below are historical planning context, not the current acceptance record.
+
 ## Milestone 0 — public foundation
 
 - [x] Public README with truthful status and non-production warning

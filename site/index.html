@@ -40,7 +40,7 @@
         <h1>Данные.<span>Под контролем.</span></h1>
         <p class="lead">SedravaSQL — экспериментальная система хранения данных, в которой изменение можно предварительно проверить, подтвердить и проследить по журналу.</p>
         <div class="actions"><a class="btn" href="https://sql.virtreal.ru/downloads/0.1.0-alpha.1/">Скачать Linux alpha <span aria-hidden="true">↗</span></a><a class="btn secondary" href="#try">Изучить прототип</a><a class="btn secondary" href="#status">Что уже работает</a></div>
-        <div class="notice"><span aria-hidden="true">⚑</span><div><strong>Версия 0.1.0-alpha.1 · Не для production.</strong><br>Две экспериментальные реализации: SQLite key/value и независимый NativeLog с ограниченным SQL. B25 — отдельное дерево, ещё не SQL-хранилище. Не храните важные данные.</div></div>
+        <div class="notice"><span aria-hidden="true">⚑</span><div><strong>Версия 0.1.0-alpha.1 · Не для production.</strong><br>Две экспериментальные реализации: SQLite key/value и независимый NativeLog с ограниченным SQL. В main — NativeLog B28; B31 — отдельное исследование, не SQL-хранилище. Не храните важные данные.</div></div>
       </div>
       <div class="terminal" aria-label="Пример работы SedravaSQL">
         <div class="terminal-head"><i class="round"></i><i class="round"></i><i class="round"></i><span class="term-label">sedravasql · CLI preview</span></div>
@@ -71,7 +71,7 @@
     </section>
     <section id="status" class="section feature"><div class="wrap">
       <div class="section-kicker">02 / Состояние разработки</div><h2>Без обещаний вместо кода.</h2>
-      <p class="intro">Ниже — граница между подтверждёнными возможностями SQLite-прототипа и NativeLog B25 и тем, что пока не реализовано либо остаётся исследованием.</p>
+      <p class="intro">Ниже — граница между подтверждёнными возможностями SQLite-прототипа и NativeLog B28 и отдельного исследования B31 и тем, что пока не реализовано либо остаётся исследованием.</p>
       <div class="split">
         <div class="panel"><h3>Реализовано и проверяется</h3><ul class="status-list">
           <li><span class="tick">✓</span><span>Исполняемый прототип на Rust, SQLite, WAL</span></li>
@@ -105,7 +105,7 @@ python3 scripts/verify_local.py</pre></div><div class="caption">Скрипт п�
     </section>
     <section id="roadmap" class="section feature"><div class="wrap">
       <div class="section-kicker">04 / Исследования</div><h2>Свой движок уже работает.</h2>
-      <p class="intro">Помимо действующего SQLite-прототипа реализован экспериментальный механизм хранения <strong style="color:#dbeeff">NativeLog</strong> без зависимости от SQLite. SQL использует журнал NativeLog; страничный B+Tree B25 пока отдельный. Нет слияния узлов, автоматического роста или промышленной надёжности.</p>
+      <p class="intro">Помимо действующего SQLite-прототипа реализован экспериментальный механизм хранения <strong style="color:#dbeeff">NativeLog</strong> без зависимости от SQLite. SQL использует журнал NativeLog B28. B25 — ранний отдельный прототип; B29–B31 — отдельное COW-хранилище, ещё не SQL backend.</p>
       <div class="process">
         <article class="step"><em>A1</em><h3>Контракт пакетных операций</h3><p>Общий экспериментальный интерфейс транзакций и тесты для NativeLog и изолированного SQLite-адаптера.</p></article>
         <article class="step"><em>B1</em><h3>Исследование восстановления</h3><p>План только для чтения и копирование подтверждённого префикса журнала без изменения источника.</p></article>
@@ -117,8 +117,13 @@ python3 scripts/verify_local.py</pre></div><div class="caption">Скрипт п�
       </div>
       <div class="actions" style="margin-top:26px"><a class="btn secondary" href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/ROADMAP.md" target="_blank" rel="noopener noreferrer">Полная дорожная карта ↗</a></div>
     </div></section>
+    <section id="checkpoint-b31" class="section wrap"><div class="section-kicker">Состояние разработки</div><h3>Контрольная точка B31 · 24–25 ноября 2026</h3>
+<p><strong>Публичный релиз 0.1.0-alpha.1 не менялся.</strong> В main — NativeLog SQL B28 (67 тестов), в отдельной ветке — COW B31 (81 тест). Sedrava main использует B28. B31 не подключён к SQL.</p>
+<p>B26–B28: оптимизация чтения схем, JSON и диапазонов по ключу. B29: бинарное COW-дерево; B30: проверенное уплотнение на 20 480 ключах (50,79 → 10,94 МБ в финальной фазе). B31: текст до 64 КиБ, overflow pages и уплотнение; 960 ключей, 16,08 МБ данных, 24,76 → 18,87 МБ после уплотнения. Лимит compact_copy — 32 МиБ полезных данных.</p>
+<p>Испытания на общем VDS, не доказательство превосходства над SQLite или устойчивости к отключению питания. B32 — безопасное повторное использование страниц, затем долговременные квитанции, миграции и SQL-интеграция. Нет BLOB, in-place vacuum или production-гарантий.</p>
+<p><a href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/DEVELOPMENT_STATUS.ru.md">Полное состояние и ограничения</a> · <a href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/NATIVE_SQL_B26_PERFORMANCE.ru.md">B26</a> · <a href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/NATIVE_SQL_B27_PERFORMANCE.ru.md">B27</a> · <a href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/NATIVE_SQL_B28_ORDERED_RANGE.ru.md">B28</a> · <a href="https://github.com/VasiliiBabkin/sedravasql/blob/research/b28-tree-sql/docs/NATIVE_SQL_B28_TREE_EXPERIMENT.ru.md">B28-A</a> · <a href="https://github.com/VasiliiBabkin/sedravasql/blob/research/b29-cow-tree/docs/NATIVE_COW_B29.ru.md">B29</a> · <a href="https://github.com/VasiliiBabkin/sedravasql/blob/research/b30-compact/docs/NATIVE_COW_B30.ru.md">B30</a> · <a href="https://github.com/VasiliiBabkin/sedravasql/blob/research/b31-overflow/docs/NATIVE_COW_B31.ru.md">B31</a></p></section>
     <section id="benchmarks" class="section wrap">
-      <div class="section-kicker">05 / Измерения · 24.11.2026</div><h2>Сравнение с SQLite.</h2>
+      <div class="section-kicker">05 / Измерения · 24.11.2026</div><h2>Базовое сравнение с SQLite (до B26–B28).</h2>
       <p class="intro">Три независимых базы по 300 строк, Rust API внутри процесса, синхронная запись и квитанции. Медианы, мс: INSERT 1,313 / 1,453; поиск PK 0,029 / 0,020; категория 0,772 / 0,173; агрегация 0,756 / 0,074 (SedravaSQL / SQLite). Выборка и агрегация требуют оптимизации. Различаются семантика квитанций и хранение истории; это не промышленный benchmark.</p>
       <p><a class="btn secondary" href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/BENCHMARK_2026_11_24.ru.md">Методика и результаты ↗</a></p>
     </section>
@@ -126,7 +131,7 @@ python3 scripts/verify_local.py</pre></div><div class="caption">Скрипт п�
       <div class="section-kicker">05 / Документация</div><h2>Смотреть исходники.<br>Сверять утверждения.</h2>
       <p class="intro">На сайте есть краткое руководство по прототипу и экспериментальному движку. Полные контракты, ограничения и проверочные сценарии остаются в репозитории GitHub.</p>
       <div class="links">
-        <a class="resource" href="/docs/"><span>Руководство SedravaSQL<small>Сборка, команды, Native B1–B25, безопасность и проверяемость</small></span><b class="arrow">↗</b></a>
+        <a class="resource" href="/docs/"><span>Руководство SedravaSQL<small>Сборка, команды, NativeLog B28 и research B31, безопасность и проверяемость</small></span><b class="arrow">↗</b></a>
         <a class="resource" href="https://github.com/VasiliiBabkin/sedravasql/blob/main/README.ru.md" target="_blank" rel="noopener noreferrer"><span>Начало работы<small>Установка, команды, ограничения</small></span><b class="arrow">↗</b></a>
         <a class="resource" href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/ARCHITECTURE.md" target="_blank" rel="noopener noreferrer"><span>Архитектура<small>Устройство прототипа</small></span><b class="arrow">↗</b></a>
         <a class="resource" href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/VERIFICATION.md" target="_blank" rel="noopener noreferrer"><span>Проверки<small>Тестовые сценарии и доказательства</small></span><b class="arrow">↗</b></a>

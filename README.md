@@ -8,6 +8,8 @@
 > The managed SQLite API is a constrained key/value interface; NativeLog has a limited SQL dialect, **not** a general SQL server,
 > full SQL dialect or PostgreSQL replacement. Do not store valuable data.
 
+**Current source checkpoint:** [B28 main / B31 research](docs/DEVELOPMENT_STATUS.en.md). Published alpha.1 is unchanged. NativeLog SQL is still journal-backed; the new COW tree is not its backend.
+
 Build (Rust 1.85+, Cargo, C compiler for bundled SQLite):
 
 ```sh

@@ -2,10 +2,14 @@
   "project": "SedravaSQL",
   "website": "https://sql.virtreal.ru/",
   "current_public_alpha": "0.1.0-alpha.1",
-  "experimental_native_engine": "B25",
+  "experimental_native_engine": "B28",
   "base_repository": "https://github.com/VasiliiBabkin/sedravasql",
-  "basis_commit": "c0860944a3a8c900864dec6bfee426151fa08c19",
+  "basis_commit": "363ccbc9542ed8e3ecf41e3619f78823ffeb97d4",
   "production_ready": false,
-  "notes": "Reviewed source basis 2026-11-24; descriptive metadata, not live health. SQL on NativeLog; B24/B25 separate.",
-  "docs": "/docs/"
+  "notes": "Development checkpoint B31; descriptive metadata, not live health. NativeLog B28 in main; B31 separate research, not SQL backend. Public alpha unchanged.",
+  "docs": "/docs/",
+  "research_stage": "B31",
+  "research_commit": "a98e709cc591057298818d0972c12cf020054295",
+  "language_basis_commit": "896685ce31f915d1ab69223f98451c2504792cf7",
+  "next_stage": "B32"
 }

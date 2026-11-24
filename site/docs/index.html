@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a1221">
-  <meta name="description" content="SedravaSQL: установка, примеры команд, состояние SQLite-прототипа и экспериментального Rust NativeLog B1–B25.">
+  <meta name="description" content="SedravaSQL: установка, примеры команд, состояние SQLite-прототипа и экспериментального Rust NativeLog B1–B28.">
   <link rel="canonical" href="https://sql.virtreal.ru/docs/">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Руководство — SedravaSQL</title>
@@ -55,14 +55,14 @@
     <aside aria-label="Содержание">
       <span class="eyebrow">Содержание</span>
       <a href="#difference">Два направления</a><a href="#install">Установка</a><a href="#first">Первый запуск</a>
-      <a href="#native">NativeLog B1–B25</a><a href="#checks">Проверка</a><a href="#limits">Ограничения</a><a href="#sources">Первоисточники</a>
+      <a href="#native">NativeLog B1–B28</a><a href="#checks">Проверка</a><a href="#limits">Ограничения</a><a href="#sources">Первоисточники</a>
     </aside>
     <article>
       <section id="difference">
         <h2>Два направления разработки</h2>
         <div class="grid">
           <div class="tile"><b>0.1.0-alpha.1 · SQLite</b><p>Работающий встраиваемый прототип на Rust: типизированное key/value API, аудит, CAS, идемпотентность и резервирование через SQLite Backup API.</p></div>
-          <div class="tile"><b>NativeLog · исследование</b><p>Отдельный Rust-движок без SQLite: append-only журнал с многоключевыми транзакциями, проверкой ревизий, журналом квитанций и экспериментами B1–B25.</p></div>
+          <div class="tile"><b>NativeLog · исследование</b><p>Отдельный Rust-движок без SQLite: append-only журнал с многоключевыми транзакциями, проверкой ревизий, журналом квитанций и экспериментами B1–B28.</p></div>
         </div>
       </section>
       <section id="install"><h2>Установка и сборка из исходников</h2>
@@ -95,7 +95,7 @@ BIN=./target/debug/sedravasql
           <div class="tile"><b>B3 · Snapshot</b><p>Сохранение текущего состояния и квитанций в отдельный детерминированный формат SEDRSNP1.</p></div>
           <div class="tile"><b>B4 · Restore</b><p>Воссоздание полного исходного журнала из snapshot в <strong>новый</strong> файл с проверкой побайтовой SHA-256.</p></div>
         </div>
-        <h3>B16–B25: SQL, страницы и B+Tree</h3>
+        <h3>B16–B28: SQL и исследования страниц</h3>
         <p>NativeLog выполняет SELECT, INSERT, UPDATE, DELETE, агрегаты, ограниченный JOIN, GROUP BY, HAVING, DISTINCT, вторичные индексы, внешние ключи и последовательные транзакции B23. Записи SQL фиксируются в журнале; отдельные B24/B25 используют redo WAL и B+Tree, но ещё не являются его backend.</p>
 <pre><code>cargo build --release --locked --manifest-path native-engine/Cargo.toml
 BIN=./native-engine/target/release/sedravasql-native-preview
@@ -106,6 +106,11 @@ DIR=$(mktemp -d)
 "$BIN" sql "$DIR/demo.log" "SELECT id,price FROM Items"
 "$BIN" verify "$DIR/demo.log"</code></pre>
         <p>Используйте только тестовые данные. <a href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/NATIVE_SQL_B23.ru.md">SQL B23</a> · <a href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/NATIVE_TREE_B25.ru.md">B25</a> · <a href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/BENCHMARK_2026_11_24.ru.md">Измерения</a>.</p>
+        <h3>Контрольная точка B31 · 24–25 ноября 2026</h3>
+<p><strong>Публичный релиз 0.1.0-alpha.1 не менялся.</strong> В main — NativeLog SQL B28 (67 тестов), в отдельной ветке — COW B31 (81 тест). Sedrava main использует B28. B31 не подключён к SQL.</p>
+<p>B26–B28: оптимизация чтения схем, JSON и диапазонов по ключу. B29: бинарное COW-дерево; B30: проверенное уплотнение на 20 480 ключах (50,79 → 10,94 МБ в финальной фазе). B31: текст до 64 КиБ, overflow pages и уплотнение; 960 ключей, 16,08 МБ данных, 24,76 → 18,87 МБ после уплотнения. Лимит compact_copy — 32 МиБ полезных данных.</p>
+<p>Испытания на общем VDS, не доказательство превосходства над SQLite или устойчивости к отключению питания. B32 — безопасное повторное использование страниц, затем долговременные квитанции, миграции и SQL-интеграция. Нет BLOB, in-place vacuum или production-гарантий.</p>
+<p><a href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/DEVELOPMENT_STATUS.ru.md">Полное состояние и ограничения</a> · <a href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/NATIVE_SQL_B26_PERFORMANCE.ru.md">B26</a> · <a href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/NATIVE_SQL_B27_PERFORMANCE.ru.md">B27</a> · <a href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/NATIVE_SQL_B28_ORDERED_RANGE.ru.md">B28</a> · <a href="https://github.com/VasiliiBabkin/sedravasql/blob/research/b28-tree-sql/docs/NATIVE_SQL_B28_TREE_EXPERIMENT.ru.md">B28-A</a> · <a href="https://github.com/VasiliiBabkin/sedravasql/blob/research/b29-cow-tree/docs/NATIVE_COW_B29.ru.md">B29</a> · <a href="https://github.com/VasiliiBabkin/sedravasql/blob/research/b30-compact/docs/NATIVE_COW_B30.ru.md">B30</a> · <a href="https://github.com/VasiliiBabkin/sedravasql/blob/research/b31-overflow/docs/NATIVE_COW_B31.ru.md">B31</a></p>
         <h3>Экспериментальный CLI</h3>
         <p>Ниже приведена демонстрация для <strong>заранее созданных тестовых файлов</strong> в приватной директории. Записывающий процесс должен быть остановлен. Это не команда для восстановления работающей базы.</p>
 <pre><code>cargo build --locked --manifest-path native-engine/Cargo.toml
