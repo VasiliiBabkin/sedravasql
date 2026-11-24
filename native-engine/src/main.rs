@@ -1,7 +1,9 @@
 //! Explicitly experimental CLI for the SQLite-free SedravaSQL append-log.
 //! NOT the existing stable or alpha SQLite CLI. Do not use for valuable data.
 use sedravasql_native_engine::backup::{backup_to_new_file, plan_backup};
-use sedravasql_native_engine::index::{create_index, lookup_index, verify_index};
+use sedravasql_native_engine::index::{
+    create_index, lookup_index, verify_index, VerifiedIndexReader,
+};
 use sedravasql_native_engine::recovery::{plan_recovery, recover_to_new_file};
 use sedravasql_native_engine::restore::restore_to_new_file;
 use sedravasql_native_engine::snapshot::{create_snapshot, verify_snapshot};
@@ -9,7 +11,7 @@ use sedravasql_native_engine::{NativeLog, NativeMutation, TransactionalStore};
 use std::{env, error::Error, fs, path::Path};
 
 fn usage() -> &'static str {
-    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | batch FILE REQUEST_KEY JSON_FILE | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256 | backup-plan SOURCE | backup-copy SOURCE DEST EXPECTED_SHA256 | snapshot-create SOURCE DEST EXPECTED_SHA256 | snapshot-verify SNAPSHOT | restore-copy SNAPSHOT NEW_DEST APPROVED_SNAPSHOT_SHA256 | index-create SNAPSHOT NEW_INDEX APPROVED_SNAPSHOT_SHA256 | index-verify INDEX | index-get INDEX NAMESPACE KEY>\n\
+    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | batch FILE REQUEST_KEY JSON_FILE | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256 | backup-plan SOURCE | backup-copy SOURCE DEST EXPECTED_SHA256 | snapshot-create SOURCE DEST EXPECTED_SHA256 | snapshot-verify SNAPSHOT | restore-copy SNAPSHOT NEW_DEST APPROVED_SNAPSHOT_SHA256 | index-create SNAPSHOT NEW_INDEX APPROVED_SNAPSHOT_SHA256 | index-verify INDEX | index-get INDEX NAMESPACE KEY | index-get-many INDEX REQUESTS_JSON>\n\
      EXPERIMENTAL / SINGLE WRITER / NO AUTOMATIC RECOVERY / NOT FOR VALUABLE DATA"
 }
 fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
@@ -75,6 +77,32 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
             println!(
                 "{}",
                 serde_json::to_string(&verify_index(Path::new(file))?)?
+            );
+        }
+        [_, cmd, file, inputs] if cmd == "index-get-many" => {
+            let input = Path::new(inputs);
+            let meta = fs::symlink_metadata(input)?;
+            if !meta.is_file() || meta.file_type().is_symlink() || meta.len() > 16_384 {
+                return Err("index-get-many: invalid request file".into());
+            }
+            let queries: Vec<[String; 2]> = serde_json::from_slice(&fs::read(input)?)?;
+            if queries.is_empty() || queries.len() > 256 {
+                return Err("index-get-many: requires 1..256 pairs".into());
+            }
+            // One verified handle for all seek/read operations, no repeated
+            // load of entire file. No mutation to the original index.
+            let mut reader = VerifiedIndexReader::open(Path::new(file))?;
+            let mut answers = Vec::with_capacity(queries.len());
+            for item in &queries {
+                answers.push(reader.get(&item[0], &item[1])?);
+            }
+            println!(
+                "{}",
+                serde_json::json!({
+                   "rows":answers,"row_bytes_read":reader.row_bytes_read(),
+                   "queries":queries.len(),"index_bytes":reader.report().index_bytes,
+                   "index_sha256":reader.report().index_sha256
+                })
             );
         }
         [_, cmd, file, namespace, key] if cmd == "index-get" => {

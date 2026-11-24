@@ -150,3 +150,13 @@ live lookup claim**. Four new Rust tests and independent CLI corruption/
 truncation/determinism tests PASS. Writable journal, B1–B5 recovery and
 original SQLite DB unchanged. Still NO GO for production.
 [RU details](NATIVE_INDEX_B8.ru.md).
+
+### Native B9: direct disk seek after one verified open
+
+VerifiedIndexReader reads immutable B8 SEDRIDX1. Full file verified
+once at open; further lookups binary-search sorted in-memory keys
+and seek/read only target records, checking row SHA-256 and metadata.
+CLI index-get-many handles 1..256 queries in one verified session.
+VDS experiment: 54 queries (4 hits), 79,924-byte index, 4,358 row
+data bytes after open. Four new Rust tests and real CLI PASS.
+Not a live or production journaling index. See NATIVE_INDEX_B9.ru.md.
