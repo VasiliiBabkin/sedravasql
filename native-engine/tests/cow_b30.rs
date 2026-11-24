@@ -92,7 +92,7 @@ fn empty_legacy_head_and_uncached_corruption() {
     fs::write(side(&p, ".head"), head).unwrap();
     let mut t = CowTree::open(&p).unwrap();
     t.commit(&[m("a", 0, Some("one"))]).unwrap();
-    assert_eq!(&fs::read(side(&p, ".head")).unwrap()[..8], b"SEDRHDR2");
+    assert_eq!(&fs::read(side(&p, ".head")).unwrap()[..8], b"SEDRHDR3");
     assert!(t.get("a").unwrap().is_some()); // warm cache
     let mut b = fs::read(&p).unwrap();
     let last = b.len() - 50;

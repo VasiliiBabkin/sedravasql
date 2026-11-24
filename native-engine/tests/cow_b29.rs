@@ -57,7 +57,9 @@ fn batches_splits_ranges_cache_and_reopen() {
     assert!(t
         .commit(&[m("k0001", 1, Some("a")), m("k0001", 1, Some("b"))])
         .is_err());
-    assert!(t.commit(&[m("large", 0, Some(&"x".repeat(257)))]).is_err());
+    assert!(t
+        .commit(&[m("large", 0, Some(&"x".repeat(65_537)))])
+        .is_err());
     assert!(t.commit(&[m("missing", 0, None)]).is_err());
     assert_eq!(bytes(&p), before);
     t.commit(&[

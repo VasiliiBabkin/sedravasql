@@ -1,0 +1,17 @@
+{
+  "schema": "b31-overflow-evidence-v1",
+  "base_commit": "e59758058eaecf7864ebb46fb86c9a377f513a4e",
+  "toolchain": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+  "source_sha256": {
+    "native-engine/src/cow_tree.rs": "2e81c461ac1cf8b7b21fe6a2bd6219a9d0685181754b6223999c69cd389342ab",
+    "native-engine/tests/cow_b29.rs": "1348e13d696e947a27bc4f148acb642d0ce69607627a1cb15d337c25a1e81181",
+    "native-engine/tests/cow_b30.rs": "7582e52b1d27430626a9bea3595577742fa43b4647a4f97aca056eb8da48a441",
+    "native-engine/tests/cow_b31.rs": "cbed5ffa2a025804020d34174b81b7af1a86eb9de7d3d8d96bd52391ff27f481",
+    "native-engine/examples/b31_overflow.rs": "e9b1b0b640ab694d4da1aa803a9c7b38a78f7ad99302986e6b0c4f5409f70ef5"
+  },
+  "binary_sha256": "ada35c9d78caae8f923f4aab17426b4e892bf97a48208b0ce6b04534227eea1a",
+  "raw_sha256": "9ca8e9151ebc12b811ef5293bf2c5159b42e49144893547a8550d8871c320895",
+  "tests_passed": 81,
+  "loadavg_1m_before": 2.65,
+  "cpu_affinity": 0
+}

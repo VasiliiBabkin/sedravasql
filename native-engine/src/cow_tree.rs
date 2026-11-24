@@ -17,15 +17,21 @@ const SIZE: usize = 4096;
 const PAYLOAD_END: usize = SIZE - 32;
 const PAGE_MAGIC: &[u8; 8] = b"SEDRCOW1";
 const HEAD_V1: &[u8; 8] = b"SEDRHDR1";
-const HEAD_MAGIC: &[u8; 8] = b"SEDRHDR2";
+const HEAD_V2: &[u8; 8] = b"SEDRHDR2";
+const HEAD_MAGIC: &[u8; 8] = b"SEDRHDR3";
 const MAX_PAGES: u64 = 65_536;
 const MAX_ROWS: u64 = 32_768;
 const MAX_DEPTH: usize = 8;
 const LEAF_MAX: usize = 8;
 const BRANCH_MAX: usize = 24;
-const VALUE_MAX: usize = 256;
+const INLINE_MAX: usize = 256;
+const VALUE_MAX: usize = 65_536;
+const OVERFLOW_CHUNK: usize = 4000;
+// Limit memory for the offline compact-copy operation separately from
+// normal point reads and writes. No on-disk mutation if this budget fails.
+const SNAPSHOT_VALUE_MAX: usize = 32 * 1024 * 1024;
 const CACHE_MAX: usize = 64;
-const MAX_STAGE: usize = 256;
+const MAX_STAGE: usize = 640;
 type Page = [u8; SIZE];
 
 fn bad() -> Error {
@@ -75,8 +81,27 @@ pub struct Mutation {
     pub value: Option<String>,
 }
 #[derive(Clone, Debug)]
+enum StoredValue {
+    Inline(String),
+    Overflow {
+        len: usize,
+        first: u64,
+        digest: [u8; 32],
+    },
+}
+#[derive(Clone, Debug)]
+struct StoredRow {
+    key: String,
+    revision: u64,
+    value: Option<StoredValue>,
+}
+#[derive(Clone, Debug)]
 enum Node {
-    Leaf(Vec<Record>),
+    Leaf(Vec<StoredRow>),
+    Overflow {
+        next: u64,
+        bytes: Vec<u8>,
+    },
     Branch {
         keys: Vec<String>,
         children: Vec<u64>,
@@ -168,7 +193,14 @@ impl Head {
     }
     fn decode(p: &Page) -> Result<Self> {
         let legacy = &p[..8] == HEAD_V1;
-        checked(p, if legacy { HEAD_V1 } else { HEAD_MAGIC })?;
+        let magic = if legacy {
+            HEAD_V1
+        } else if &p[..8] == HEAD_V2 {
+            HEAD_V2
+        } else {
+            HEAD_MAGIC
+        };
+        checked(p, magic)?;
         let mut d = Decode {
             bytes: &p[..PAYLOAD_END],
             at: 8,
@@ -207,13 +239,37 @@ fn encode(node: &Node, h: Head, id: u64) -> Result<Page> {
                 b.extend(r.revision.to_be_bytes());
                 match &r.value {
                     None => b.extend(u16::MAX.to_be_bytes()),
-                    Some(v) => {
+                    Some(StoredValue::Inline(v)) => {
+                        if v.len() > INLINE_MAX || v.contains('\0') {
+                            return Err(bad());
+                        }
                         b.extend((v.len() as u16).to_be_bytes());
                         b.extend(v.as_bytes());
+                    }
+                    Some(StoredValue::Overflow { len, first, digest }) => {
+                        if !(INLINE_MAX + 1..=VALUE_MAX).contains(len)
+                            || *first == 0
+                            || *first >= id
+                        {
+                            return Err(bad());
+                        }
+                        b.extend((u16::MAX - 1).to_be_bytes());
+                        b.extend((*len as u64).to_be_bytes());
+                        b.extend(first.to_be_bytes());
+                        b.extend(digest);
                     }
                 }
             }
             1
+        }
+        Node::Overflow { next, bytes } => {
+            if bytes.is_empty() || bytes.len() > OVERFLOW_CHUNK || *next >= id {
+                return Err(bad());
+            }
+            b.extend((bytes.len() as u16).to_be_bytes());
+            b.extend(next.to_be_bytes());
+            b.extend(bytes);
+            3
         }
         Node::Branch { keys, children } => {
             if keys.is_empty() || keys.len() > BRANCH_MAX || children.len() != keys.len() + 1 {
@@ -271,17 +327,25 @@ fn decode(p: &Page, h: Head, id: u64) -> Result<Node> {
                 let len = d.u16()?;
                 let value = if len == u16::MAX {
                     None
+                } else if len == u16::MAX - 1 {
+                    let len = usize::try_from(d.u64()?).map_err(|_| bad())?;
+                    let first = d.u64()?;
+                    let digest = d.take(32)?.try_into().map_err(|_| bad())?;
+                    if !(INLINE_MAX + 1..=VALUE_MAX).contains(&len) || first == 0 || first >= id {
+                        return Err(bad());
+                    }
+                    Some(StoredValue::Overflow { len, first, digest })
                 } else {
-                    if len as usize > VALUE_MAX {
+                    if len as usize > INLINE_MAX {
                         return Err(bad());
                     }
                     let v = std::str::from_utf8(d.take(len as usize)?).map_err(|_| bad())?;
                     if v.contains('\0') {
                         return Err(bad());
                     }
-                    Some(v.into())
+                    Some(StoredValue::Inline(v.into()))
                 };
-                rows.push(Record {
+                rows.push(StoredRow {
                     key,
                     revision,
                     value,
@@ -291,6 +355,16 @@ fn decode(p: &Page, h: Head, id: u64) -> Result<Node> {
                 return Err(bad());
             }
             Node::Leaf(rows)
+        }
+        3 if (1..=OVERFLOW_CHUNK).contains(&count) => {
+            let next = d.u64()?;
+            if next >= id {
+                return Err(bad());
+            }
+            Node::Overflow {
+                next,
+                bytes: d.take(count)?.to_vec(),
+            }
         }
         2 if (1..=BRANCH_MAX).contains(&count) => {
             let mut keys = Vec::with_capacity(count);
@@ -313,6 +387,37 @@ fn decode(p: &Page, h: Head, id: u64) -> Result<Node> {
     }
     Ok(node)
 }
+// Split bytes, not Unicode scalar boundaries; the full string is decoded
+// only after exact-length and digest validation. Child links descend in ID.
+fn store_row(row: Record, mut add: impl FnMut(Node) -> Result<u64>) -> Result<StoredRow> {
+    let value = match row.value {
+        None => None,
+        Some(v) if v.len() <= INLINE_MAX => Some(StoredValue::Inline(v)),
+        Some(v) => {
+            if v.len() > VALUE_MAX || v.contains('\0') {
+                return Err(cap());
+            }
+            let mut first = 0;
+            for chunk in v.as_bytes().chunks(OVERFLOW_CHUNK).rev() {
+                first = add(Node::Overflow {
+                    next: first,
+                    bytes: chunk.to_vec(),
+                })?;
+            }
+            Some(StoredValue::Overflow {
+                len: v.len(),
+                first,
+                digest: hash(v.as_bytes()),
+            })
+        }
+    };
+    Ok(StoredRow {
+        key: row.key,
+        revision: row.revision,
+        value,
+    })
+}
+
 fn read_page(f: &mut File, id: u64) -> Result<Page> {
     let mut p = [0; SIZE];
     f.seek(SeekFrom::Start(
@@ -347,8 +452,20 @@ impl Stage {
                 continue;
             }
             let node = self.nodes.get((id - self.base) as usize).ok_or_else(bad)?;
-            if let Node::Branch { children, .. } = node {
-                todo.extend(children.iter().copied());
+            match node {
+                Node::Branch { children, .. } => todo.extend(children.iter().copied()),
+                Node::Leaf(rows) => {
+                    for r in rows {
+                        if let Some(StoredValue::Overflow { first, .. }) = &r.value {
+                            todo.push(*first);
+                        }
+                    }
+                }
+                Node::Overflow { next, .. } => {
+                    if *next != 0 {
+                        todo.push(*next);
+                    }
+                }
             }
         }
         let remap: BTreeMap<u64, u64> = live
@@ -370,9 +487,23 @@ impl Stage {
                 .get((id - self.base) as usize)
                 .cloned()
                 .ok_or_else(bad)?;
-            if let Node::Branch { children, .. } = &mut n {
-                for child in children {
-                    *child = translate(*child)?;
+            match &mut n {
+                Node::Branch { children, .. } => {
+                    for child in children {
+                        *child = translate(*child)?;
+                    }
+                }
+                Node::Leaf(rows) => {
+                    for r in rows {
+                        if let Some(StoredValue::Overflow { first, .. }) = &mut r.value {
+                            *first = translate(*first)?;
+                        }
+                    }
+                }
+                Node::Overflow { next, .. } => {
+                    if *next != 0 {
+                        *next = translate(*next)?;
+                    }
                 }
             }
             nodes.push(n);
@@ -523,6 +654,48 @@ impl CowTree {
             s.nodes.get((id - s.base) as usize).cloned().ok_or_else(bad)
         }
     }
+    fn materialize(
+        &mut self,
+        r: StoredRow,
+        mut seen: Option<&mut BTreeSet<u64>>,
+    ) -> Result<Record> {
+        let value = match r.value {
+            None => None,
+            Some(StoredValue::Inline(v)) => Some(v),
+            Some(StoredValue::Overflow { len, first, digest }) => {
+                let mut data = Vec::with_capacity(len);
+                let mut id = first;
+                while data.len() < len {
+                    if id == 0 || seen.as_deref_mut().is_some_and(|s| !s.insert(id)) {
+                        return Err(bad());
+                    }
+                    let Node::Overflow { next, bytes } = self.node(id)? else {
+                        return Err(bad());
+                    };
+                    let expected = (len - data.len()).min(OVERFLOW_CHUNK);
+                    if bytes.len() != expected || (next == 0) != (data.len() + expected == len) {
+                        return Err(bad());
+                    }
+                    data.extend(bytes);
+                    id = next;
+                }
+                if id != 0 || hash(&data) != digest {
+                    return Err(bad());
+                }
+                let v = String::from_utf8(data).map_err(|_| bad())?;
+                if v.contains('\0') {
+                    return Err(bad());
+                }
+                Some(v)
+            }
+        };
+        Ok(Record {
+            key: r.key,
+            revision: r.revision,
+            value,
+        })
+    }
+
     fn verify_node(&mut self, id: u64, depth: usize, seen: &mut BTreeSet<u64>) -> Result<Walk> {
         if depth > MAX_DEPTH || !seen.insert(id) {
             return Err(bad());
@@ -531,6 +704,9 @@ impl CowTree {
             Node::Leaf(rows) => {
                 if rows.is_empty() && depth != 1 {
                     return Err(bad());
+                }
+                for r in &rows {
+                    self.materialize(r.clone(), Some(seen))?;
                 }
                 Ok(Walk {
                     first: rows.first().map(|r| r.key.clone()),
@@ -568,6 +744,7 @@ impl CowTree {
                 }
                 Ok(out)
             }
+            Node::Overflow { .. } => Err(bad()),
         }
     }
     // B30: an offline compact copy, never an in-place swap of the two
@@ -595,14 +772,21 @@ impl CowTree {
             return Err(bad());
         }
         let mut rows = Vec::with_capacity(info.rows as usize);
-        self.collect_rows(self.head.root, 1, &mut rows)?;
+        let mut value_bytes = 0;
+        self.collect_rows(self.head.root, 1, &mut rows, &mut value_bytes)?;
         if rows.len() as u64 != self.head.rows || rows.windows(2).any(|w| w[0].key >= w[1].key) {
             return Err(bad());
         }
         Ok(rows)
     }
 
-    fn collect_rows(&mut self, id: u64, depth: usize, out: &mut Vec<Record>) -> Result<()> {
+    fn collect_rows(
+        &mut self,
+        id: u64,
+        depth: usize,
+        out: &mut Vec<Record>,
+        value_bytes: &mut usize,
+    ) -> Result<()> {
         if depth > MAX_DEPTH {
             return Err(bad());
         }
@@ -611,13 +795,23 @@ impl CowTree {
                 if out.len() + rows.len() > MAX_ROWS as usize {
                     return Err(cap());
                 }
-                out.extend(rows);
+                for r in rows {
+                    let r = self.materialize(r, None)?;
+                    *value_bytes = value_bytes
+                        .checked_add(r.value.as_ref().map_or(0, |v| v.len()))
+                        .ok_or_else(cap)?;
+                    if *value_bytes > SNAPSHOT_VALUE_MAX {
+                        return Err(cap());
+                    }
+                    out.push(r);
+                }
             }
             Node::Branch { children, .. } => {
                 for c in children {
-                    self.collect_rows(c, depth + 1, out)?;
+                    self.collect_rows(c, depth + 1, out, value_bytes)?;
                 }
             }
+            Node::Overflow { .. } => return Err(bad()),
         }
         Ok(())
     }
@@ -674,9 +868,20 @@ impl CowTree {
         // minima. Dense leaves, evenly balanced groups of at most 25 children
         // avoid an illegal one-child non-root branch.
         for chunk in rows.chunks(LEAF_MAX) {
+            let mut stored = Vec::with_capacity(chunk.len());
+            for r in chunk {
+                stored.push(store_row(r.clone(), |n| {
+                    let id = nodes.len() as u64 + 1;
+                    if id >= MAX_PAGES {
+                        return Err(cap());
+                    }
+                    nodes.push(n);
+                    Ok(id)
+                })?);
+            }
             let id = nodes.len() as u64 + 1;
             level.push((chunk[0].key.clone(), id));
-            nodes.push(Node::Leaf(chunk.to_vec()));
+            nodes.push(Node::Leaf(stored));
         }
         if level.is_empty() {
             level.push((String::new(), 1));
@@ -763,14 +968,15 @@ impl CowTree {
         for _ in 0..MAX_DEPTH {
             match self.node(id)? {
                 Node::Leaf(rows) => {
-                    return Ok(rows
-                        .binary_search_by(|r| r.key.as_str().cmp(key))
-                        .ok()
-                        .map(|i| rows[i].clone()))
+                    return match rows.binary_search_by(|r| r.key.as_str().cmp(key)) {
+                        Ok(i) => Ok(Some(self.materialize(rows[i].clone(), None)?)),
+                        Err(_) => Ok(None),
+                    };
                 }
                 Node::Branch { keys, children } => {
                     id = children[keys.partition_point(|k| k.as_str() <= key)]
                 }
+                Node::Overflow { .. } => return Err(bad()),
             }
         }
         Err(bad())
@@ -788,11 +994,15 @@ impl CowTree {
             return Err(bad());
         }
         match self.node(id)? {
-            Node::Leaf(rows) => out.extend(
-                rows.into_iter()
+            Node::Leaf(rows) => {
+                for r in rows
+                    .into_iter()
                     .filter(|r| r.key.as_str() >= start && r.key.as_str() < end)
-                    .take(limit - out.len()),
-            ),
+                    .take(limit - out.len())
+                {
+                    out.push(self.materialize(r, None)?);
+                }
+            }
             Node::Branch { keys, children } => {
                 let first = keys.partition_point(|k| k.as_str() <= start);
                 let last = keys.partition_point(|k| k.as_str() < end);
@@ -803,6 +1013,7 @@ impl CowTree {
                     self.range_node(c, start, end, limit, depth + 1, out)?;
                 }
             }
+            Node::Overflow { .. } => return Err(bad()),
         }
         Ok(())
     }
@@ -830,11 +1041,14 @@ impl CowTree {
                         "cow tree: revision or deletion conflict".into(),
                     ));
                 }
-                let row = Record {
-                    key: m.key.clone(),
-                    revision: m.expected_revision.checked_add(1).ok_or_else(cap)?,
-                    value: m.value.clone(),
-                };
+                let row = store_row(
+                    Record {
+                        key: m.key.clone(),
+                        revision: m.expected_revision.checked_add(1).ok_or_else(cap)?,
+                        value: m.value.clone(),
+                    },
+                    |n| s.add(n),
+                )?;
                 match pos {
                     Ok(i) => rows[i] = row,
                     Err(i) => {
@@ -892,6 +1106,7 @@ impl CowTree {
                     )),
                 })
             }
+            Node::Overflow { .. } => Err(bad()),
         }
     }
     /// Atomically publish up to 16 distinct key mutations. Any admission
