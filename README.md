@@ -96,3 +96,8 @@ See docs/NATIVE_CRASH_B52.ru.md.
 B6 experimental [opt-in managed multi-key SQLite transaction](docs/MANAGED_BATCH_B6.ru.md):
 2–4 CAS writes, legacy per-row audit/receipts and one durable group response.
 Existing callers require no migration, and there is no production claim.
+
+Experimental B7: [consistent multi-key managed SQLite read snapshot](docs/MANAGED_SNAPSHOT_B7.ru.md).
+Read 1–16 distinct namespace/key records within one read-only WAL
+transaction, compatible with B6 atomic writes. No schema migration,
+general SQL query feature, NativeLog switching or production claim.

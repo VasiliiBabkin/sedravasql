@@ -127,3 +127,14 @@ and one full application response in one SQLite transaction. A caller can
 include a separately validated Sedrava server state as another managed
 row. Tests cover rollback, replay, isolation and original API compatibility.
 [Contract](MANAGED_BATCH_B6.ru.md).
+
+### B7 managed multi-key read snapshot (experimental)
+
+Database::read_snapshot accepts 1–16 unique, literal-compatible
+namespace/key pairs and loads them within a single deferred SQLite
+WAL transaction, so one call cannot mix data across different
+commit generations. Tests include 180 concurrent B6 two-key commits
+and 900 repeated reads, invalid inputs, missing/tombstone handling,
+and unchanged audit. No schema change, general query capability,
+cross-request snapshot or power-loss guarantee.
+[RU protocol](MANAGED_SNAPSHOT_B7.ru.md).

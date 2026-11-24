@@ -301,6 +301,57 @@ impl Database {
             revision: revision as u64,
         }))
     }
+    /// B7: read up to 16 distinct managed keys at one SQLite WAL snapshot.
+    ///
+    /// The deferred transaction starts its stable snapshot on the first
+    /// SELECT and preserves it through subsequent key reads. An interleaved
+    /// writer cannot mix old/new entries within a single response.
+    /// Missing records and tombstones remain distinct.
+    pub fn read_snapshot(&self, keys: &[(&str, &str)]) -> Result<Vec<Option<Entry>>> {
+        if keys.is_empty() || keys.len() > 16 {
+            return Err(Error::Invalid(
+                "snapshot requires 1..16 distinct managed keys",
+            ));
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        for &(namespace, key) in keys {
+            if !valid_id(namespace) || !valid_id(key) || !seen.insert((namespace, key)) {
+                return Err(Error::Invalid(
+                    "snapshot has invalid or duplicate namespace/key",
+                ));
+            }
+        }
+        let transaction = self.conn.unchecked_transaction()?;
+        let mut results = Vec::with_capacity(keys.len());
+        {
+            let mut statement = transaction.prepare_cached(
+                "SELECT value,revision FROM records WHERE namespace=?1 AND key=?2",
+            )?;
+            for &(namespace, key) in keys {
+                let row = statement
+                    .query_row(params![namespace, key], |r| {
+                        Ok((r.get::<_, Option<String>>(0)?, r.get::<_, i64>(1)?))
+                    })
+                    .optional()?;
+                let entry = match row {
+                    Some((value, revision)) if revision > 0 => Some(Entry {
+                        namespace: namespace.to_owned(),
+                        key: key.to_owned(),
+                        value,
+                        revision: u64::try_from(revision).expect("positive i64 fits u64"),
+                    }),
+                    Some(_) => {
+                        return Err(Error::Unsupported("invalid snapshot revision".into()));
+                    }
+                    None => None,
+                };
+                results.push(entry);
+            }
+        }
+        transaction.rollback()?;
+        Ok(results)
+    }
+
     pub fn list(&self, namespace: &str) -> Result<Vec<Entry>> {
         if !valid_id(namespace) {
             return Err(Error::Invalid("invalid namespace"));
