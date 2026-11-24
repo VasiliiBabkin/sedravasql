@@ -101,3 +101,8 @@ Experimental B7: [consistent multi-key managed SQLite read snapshot](docs/MANAGE
 Read 1–16 distinct namespace/key records within one read-only WAL
 transaction, compatible with B6 atomic writes. No schema migration,
 general SQL query feature, NativeLog switching or production claim.
+
+NativeLog B8 research: [verified offline immutable point-lookup sidecar](docs/NATIVE_INDEX_B8.ru.md)
+derived from an approved B3 snapshot. Sorted directory, deterministic
+contents, SHA-256 and strict full-file verification. NOT a fast live
+on-disk index, checkpoint, receipt-preserving restore or production DB.

@@ -9,6 +9,7 @@
 //! A stale .lock after a crash must be handled by an operator.
 //! Do not store irreplaceable data here.
 pub mod backup;
+pub mod index;
 pub mod recovery;
 pub mod restore;
 pub mod snapshot;

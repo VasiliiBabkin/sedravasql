@@ -116,3 +116,10 @@ SHA-256 оператором; это не snapshot, compaction или online bac
 создаёт новый SEDRLOG1, воспроизводит исходные операции и проверяет
 полный SHA-256 журнала. Это не автоматическое восстановление боевой
 базы и не compaction/index.
+
+## Offline NativeLog B8
+
+[SEDRIDX1 verified sidecar](NATIVE_INDEX_B8.ru.md) materializes a sorted
+point-read index from a B3 snapshot without altering its source.
+This is not a live or asymptotically fast disk index. Next gate is a
+true page/offset index and operator-approved checkpoint.

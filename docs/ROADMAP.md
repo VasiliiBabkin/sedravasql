@@ -138,3 +138,15 @@ and 900 repeated reads, invalid inputs, missing/tombstone handling,
 and unchanged audit. No schema change, general query capability,
 cross-request snapshot or power-loss guarantee.
 [RU protocol](MANAGED_SNAPSHOT_B7.ru.md).
+
+### Native B8: offline verified lookup sidecar (2026-11-24)
+
+SEDRIDX1 is an immutable file generated only from a SHA-approved B3
+snapshot into a new 0600 file under a 0700 parent. Includes sorted
+namespace/key directory, source hashes and full row data, but excludes
+receipts. Strict verification of checksum/ordering/offsets/digests before
+binary-search lookup; **full-file validation means no faster-asymptotic
+live lookup claim**. Four new Rust tests and independent CLI corruption/
+truncation/determinism tests PASS. Writable journal, B1–B5 recovery and
+original SQLite DB unchanged. Still NO GO for production.
+[RU details](NATIVE_INDEX_B8.ru.md).
