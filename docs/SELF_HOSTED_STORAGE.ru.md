@@ -123,3 +123,11 @@ SHA-256 оператором; это не snapshot, compaction или online bac
 point-read index from a B3 snapshot without altering its source.
 This is not a live or asymptotically fast disk index. Next gate is a
 true page/offset index and operator-approved checkpoint.
+
+## NativeLog B9 — диск по смещению
+
+NATIVE_INDEX_B9.ru.md: VerifiedIndexReader проверяет
+иммутабельный B8 индекс при открытии и затем читает
+выбранные строки по смещениям. 54 запроса в эксперименте
+использовали 4358 байт строк после открытия. Индекс
+живого writable-журнала ещё не реализован.

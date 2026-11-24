@@ -174,6 +174,147 @@ fn read_index(path: &Path) -> Result<(Directory, Vec<NativeEntry>, IndexReport)>
     let status = report(&dir, &bytes);
     Ok((dir, entries, status))
 }
+/// B9: one fully verified immutable-index file handle, with direct
+/// per-key seek/read after opening. The original SEDRIDX1 format remains
+/// unchanged. This is an OFFLINE snapshot index, never a live journal.
+pub struct VerifiedIndexReader {
+    file: File,
+    path: std::path::PathBuf,
+    rows: Vec<DirectoryEntry>,
+    data_at: u64,
+    report: IndexReport,
+    #[cfg(unix)]
+    identity: IndexIdentity,
+    row_bytes_read: u64,
+}
+#[cfg(unix)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct IndexIdentity {
+    dev: u64,
+    ino: u64,
+    len: u64,
+    mtime: i64,
+    mtime_nsec: i64,
+    ctime: i64,
+    ctime_nsec: i64,
+}
+#[cfg(unix)]
+fn identity(meta: &fs::Metadata) -> IndexIdentity {
+    use std::os::unix::fs::MetadataExt;
+    IndexIdentity {
+        dev: meta.dev(),
+        ino: meta.ino(),
+        len: meta.len(),
+        mtime: meta.mtime(),
+        mtime_nsec: meta.mtime_nsec(),
+        ctime: meta.ctime(),
+        ctime_nsec: meta.ctime_nsec(),
+    }
+}
+impl VerifiedIndexReader {
+    /// Full validation is done ONCE on opening, not per item lookup.
+    pub fn open(path: &Path) -> Result<Self> {
+        private_parent(path)?;
+        private_file(path)?;
+        let (dir, _, report) = read_index(path)?;
+        let mut file = File::open(path)?;
+        same_file(&file, path)?;
+        // Recheck the bytes of the just-opened handle to prevent a
+        // check/open replacement race between verification and reading.
+        if file.metadata()?.len() != report.index_bytes
+            || file_sha256(&mut file)? != report.index_sha256
+        {
+            return Err(Error::Conflict("index: replaced during open".into()));
+        }
+        file.seek(SeekFrom::Start(8))?;
+        let mut lengths = [0u8; 8];
+        file.read_exact(&mut lengths)?;
+        let dir_len = u32::from_be_bytes(lengths[..4].try_into().unwrap()) as u64;
+        let dat_len = u32::from_be_bytes(lengths[4..].try_into().unwrap()) as u64;
+        if 48u64
+            .checked_add(dir_len)
+            .and_then(|x| x.checked_add(dat_len))
+            != Some(report.index_bytes)
+            || dat_len != dir.data_bytes
+        {
+            return Err(Error::Conflict(
+                "index: changed framing after verification".into(),
+            ));
+        }
+        let data_at = 16u64
+            .checked_add(dir_len)
+            .ok_or(Error::Invalid("index: directory size overflow"))?;
+        let meta = file.metadata()?;
+        Ok(Self {
+            file,
+            path: path.to_owned(),
+            rows: dir.rows,
+            data_at,
+            report,
+            #[cfg(unix)]
+            identity: identity(&meta),
+            row_bytes_read: 0,
+        })
+    }
+    pub fn report(&self) -> &IndexReport {
+        &self.report
+    }
+    /// Bytes read from the ROW DATA section since session open. Excludes
+    /// initial full verification and small per-read metadata checks.
+    pub fn row_bytes_read(&self) -> u64 {
+        self.row_bytes_read
+    }
+    /// O(log N) directory search then one bounded disk read. Revalidates
+    /// just that row's SHA-256 and exact record metadata.
+    /// NOTE: malicious in-place replacement between two reads remains
+    /// out of scope; mtime/ctime/inode checks are not security signatures.
+    pub fn get(&mut self, namespace: &str, key: &str) -> Result<Option<NativeEntry>> {
+        if !valid_id(namespace) || !valid_id(key) {
+            return Err(Error::Invalid("index: invalid key lookup"));
+        }
+        same_file(&self.file, &self.path)?;
+        #[cfg(unix)]
+        if identity(&self.file.metadata()?) != self.identity {
+            return Err(Error::Conflict(
+                "index: index file changed after open".into(),
+            ));
+        }
+        let found = self
+            .rows
+            .binary_search_by(|e| (e.namespace.as_str(), e.key.as_str()).cmp(&(namespace, key)));
+        let Ok(index) = found else { return Ok(None) };
+        let entry = &self.rows[index];
+        let absolute = self
+            .data_at
+            .checked_add(entry.offset)
+            .ok_or(Error::Invalid("index: absolute offset overflow"))?;
+        let mut content = vec![0u8; entry.bytes as usize];
+        self.file.seek(SeekFrom::Start(absolute))?;
+        self.file.read_exact(&mut content)?;
+        self.row_bytes_read = self
+            .row_bytes_read
+            .checked_add(content.len() as u64)
+            .ok_or(Error::Invalid("index: read counter overflow"))?;
+        if sha(&content) != entry.sha256 {
+            return Err(Error::Conflict("index: indexed row corrupted".into()));
+        }
+        let record: NativeEntry = serde_json::from_slice(&content)
+            .map_err(|_| Error::Invalid("index: invalid indexed row"))?;
+        if record.namespace != entry.namespace
+            || record.key != entry.key
+            || record.revision != entry.revision
+        {
+            return Err(Error::Conflict("index: indexed row mismatch".into()));
+        }
+        same_file(&self.file, &self.path)?;
+        #[cfg(unix)]
+        if identity(&self.file.metadata()?) != self.identity {
+            return Err(Error::Conflict("index: file changed during lookup".into()));
+        }
+        Ok(Some(record))
+    }
+}
+
 pub fn verify_index(path: &Path) -> Result<IndexReport> {
     let (_, _, status) = read_index(path)?;
     Ok(status)

@@ -106,3 +106,9 @@ NativeLog B8 research: [verified offline immutable point-lookup sidecar](docs/NA
 derived from an approved B3 snapshot. Sorted directory, deterministic
 contents, SHA-256 and strict full-file verification. NOT a fast live
 on-disk index, checkpoint, receipt-preserving restore or production DB.
+
+NativeLog B9: verified per-session direct disk reads from immutable
+B8 SEDRIDX1 index. Full validation at open, then binary-search
+directory + seek/read/row SHA per key. Sample: 54 lookups, only
+4358 row-data bytes after open of 79924-byte index.
+Not a live writable journal index; docs/NATIVE_INDEX_B9.ru.md.

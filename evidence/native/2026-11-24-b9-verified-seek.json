@@ -1,0 +1,19 @@
+{
+  "schema": "sedravasql.native.b9.indexed-session.v1",
+  "date": "2026-11-24",
+  "format": "SEDRIDX1",
+  "retains_b8_format": true,
+  "rust_tests_added": 4,
+  "test": "scripts/verify_native_index_b9.py",
+  "index_bytes": 79924,
+  "query_count": 54,
+  "found": 4,
+  "missing": 50,
+  "row_data_bytes_read_after_open": 4358,
+  "initial_full_file_verified": true,
+  "direct_seek_after_open": true,
+  "live_journal_index": false,
+  "power_loss_certified": false,
+  "same_uid_adversary_protected": false,
+  "production_ready": false
+}
