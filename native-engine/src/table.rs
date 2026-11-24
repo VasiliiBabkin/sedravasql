@@ -136,17 +136,17 @@ impl<'a> Tables<'a> {
     pub fn new(db: &'a mut NativeLog) -> Self {
         Self { db }
     }
+    pub(crate) fn prepare_create(&self, schema: &TableSchema) -> Result<NativeMutation> {
+        Ok(NativeMutation {
+            namespace: CATALOG.into(),
+            key: schema.name.clone(),
+            expected_revision: 0,
+            change: NativeChange::Put(schema.encoded()?),
+        })
+    }
     pub fn create(&mut self, request: &str, schema: &TableSchema) -> Result<NativeCommit> {
-        let encoded = schema.encoded()?;
-        self.db.commit_batch(
-            request,
-            &[NativeMutation {
-                namespace: CATALOG.into(),
-                key: schema.name.clone(),
-                expected_revision: 0,
-                change: NativeChange::Put(encoded),
-            }],
-        )
+        let op = self.prepare_create(schema)?;
+        self.db.commit_batch(request, &[op])
     }
     pub fn schema(&self, table: &str) -> Result<Option<TableSchema>> {
         if !identifier(table) {
@@ -170,7 +170,7 @@ impl<'a> Tables<'a> {
         self.schema(table)?
             .ok_or(Error::Invalid("table: unknown table"))
     }
-    fn prepare_mutation(&self, change: &TableMutation) -> Result<NativeMutation> {
+    pub(crate) fn prepare_mutation(&self, change: &TableMutation) -> Result<NativeMutation> {
         match change {
             TableMutation::Put {
                 table,

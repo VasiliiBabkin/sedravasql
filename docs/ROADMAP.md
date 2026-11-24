@@ -192,3 +192,7 @@ No full accumulated-state clone per frame; prepare validated delta, publish only
 ### B16a: typed table API
 
 [Immutable schema and primary key CRUD / atomic multi-table batches](NATIVE_TABLE_B16A.ru.md). SQL grammar/executor and online compaction remain pending.
+
+### B16b/B16c — Native SQL subset and bindings
+
+[SQL grammar, limits, atomic receipts and typed positional bindings](NATIVE_SQL_B16B.ru.md). JOIN, aggregates, secondary indexes and live compaction pending.

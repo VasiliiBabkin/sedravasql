@@ -13,7 +13,7 @@ use sedravasql_native_engine::{NativeLimits, NativeLog, NativeMutation, Transact
 use std::{env, error::Error, fs, path::Path};
 
 fn usage() -> &'static str {
-    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | read-many FILE REQUESTS_JSON | receipt FILE REQUEST_KEY | batch FILE REQUEST_KEY JSON_FILE [MAX_BYTES MAX_TRANSACTIONS] | usage FILE [MAX_BYTES MAX_TRANSACTIONS] | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256 | table-batch FILE REQUEST_KEY CHANGES_JSON | table-create FILE REQUEST_KEY SCHEMA_JSON | table-schema FILE TABLE | table-put FILE REQUEST_KEY TABLE EXPECTED_REVISION ROW_JSON | table-delete FILE REQUEST_KEY TABLE KEY EXPECTED_REVISION | table-get FILE TABLE KEY | table-scan FILE TABLE LIMIT [AFTER] | archive-create SOURCE DEST EXPECTED_SHA256 | archive-verify ARCHIVE | archive-restore ARCHIVE DEST EXPECTED_SHA256 | backup-plan SOURCE | backup-copy SOURCE DEST EXPECTED_SHA256 | snapshot-create SOURCE DEST EXPECTED_SHA256 | snapshot-verify SNAPSHOT | restore-copy SNAPSHOT NEW_DEST APPROVED_SNAPSHOT_SHA256 | index-create SNAPSHOT NEW_INDEX APPROVED_SNAPSHOT_SHA256 | index-verify INDEX | index-get INDEX NAMESPACE KEY | index-get-many INDEX REQUESTS_JSON | index-range INDEX NAMESPACE START END LIMIT | index-page INDEX NAMESPACE START END LIMIT [CURSOR_JSON]>\n\
+    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | read-many FILE REQUESTS_JSON | receipt FILE REQUEST_KEY | batch FILE REQUEST_KEY JSON_FILE [MAX_BYTES MAX_TRANSACTIONS] | usage FILE [MAX_BYTES MAX_TRANSACTIONS] | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256 | sql FILE SQL [REQUEST_KEY] | sql-bind FILE SQL PARAMS_JSON [REQUEST_KEY] | table-batch FILE REQUEST_KEY CHANGES_JSON | table-create FILE REQUEST_KEY SCHEMA_JSON | table-schema FILE TABLE | table-put FILE REQUEST_KEY TABLE EXPECTED_REVISION ROW_JSON | table-delete FILE REQUEST_KEY TABLE KEY EXPECTED_REVISION | table-get FILE TABLE KEY | table-scan FILE TABLE LIMIT [AFTER] | archive-create SOURCE DEST EXPECTED_SHA256 | archive-verify ARCHIVE | archive-restore ARCHIVE DEST EXPECTED_SHA256 | backup-plan SOURCE | backup-copy SOURCE DEST EXPECTED_SHA256 | snapshot-create SOURCE DEST EXPECTED_SHA256 | snapshot-verify SNAPSHOT | restore-copy SNAPSHOT NEW_DEST APPROVED_SNAPSHOT_SHA256 | index-create SNAPSHOT NEW_INDEX APPROVED_SNAPSHOT_SHA256 | index-verify INDEX | index-get INDEX NAMESPACE KEY | index-get-many INDEX REQUESTS_JSON | index-range INDEX NAMESPACE START END LIMIT | index-page INDEX NAMESPACE START END LIMIT [CURSOR_JSON]>\n\
      EXPERIMENTAL / SINGLE WRITER / NO AUTOMATIC RECOVERY / NOT FOR VALUABLE DATA"
 }
 fn limits(args: &[String]) -> Result<NativeLimits, Box<dyn Error>> {
@@ -48,6 +48,35 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
         [_, cmd, source, destination, digest] if cmd == "recovery-copy" => {
             let plan = recover_to_new_file(Path::new(source), Path::new(destination), digest)?;
             println!("{}", serde_json::to_string(&plan)?);
+        }
+        [_, cmd, file, sql, params, rest @ ..] if cmd == "sql-bind" => {
+            let request = match rest {
+                [] => None,
+                [s] => Some(s.as_str()),
+                _ => return Err("sql-bind: expected optional request key".into()),
+            };
+            let params: Vec<sedravasql_native_engine::table::Cell> = table_input(params)?;
+            let mut db = NativeLog::open(Path::new(file))?;
+            println!(
+                "{}",
+                serde_json::to_string(&sedravasql_native_engine::sql::execute_bound(
+                    &mut db, sql, &params, request
+                )?)?
+            );
+        }
+        [_, cmd, file, sql, rest @ ..] if cmd == "sql" => {
+            let request = match rest {
+                [] => None,
+                [s] => Some(s.as_str()),
+                _ => return Err("sql: expected optional request key".into()),
+            };
+            let mut db = NativeLog::open(Path::new(file))?;
+            println!(
+                "{}",
+                serde_json::to_string(&sedravasql_native_engine::sql::execute(
+                    &mut db, sql, request
+                )?)?
+            );
         }
         [_, cmd, file, request, input] if cmd == "table-batch" => {
             let changes: Vec<TableMutation> = table_input(input)?;

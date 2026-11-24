@@ -1,0 +1,1 @@
+{"stage":"B16b/B16c","environment":"VDS Linux","native_rust_pass":49,"sqlite_rust_pass":21,"strict_clippy":"PASS","sql_oracle_rows":24,"sql_oracle_queries":10,"sql_oracle":"PASS","existing_cli_regressions":"PASS_B16b","parameter_binding":"PASS","production":false}

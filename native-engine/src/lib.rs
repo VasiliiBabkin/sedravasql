@@ -14,6 +14,7 @@ pub mod index;
 pub mod recovery;
 pub mod restore;
 pub mod snapshot;
+pub mod sql;
 pub mod table;
 
 use std::error::Error as StdError;
