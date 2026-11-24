@@ -212,3 +212,7 @@ No full accumulated-state clone per frame; prepare validated delta, publish only
 ### B20 — foreign keys and disjoint-row SQL transactions
 
 [Constraints and atomic transaction subset](NATIVE_SQL_B20.ru.md). General transaction sessions and disk index pages pending.
+
+### B21/B22 — immutable checked page image and disk search tree
+
+[SEDRPG01 format and limits](NATIVE_PAGES_B21_B22.ru.md). Writable paged storage and live SQL index integration pending.
