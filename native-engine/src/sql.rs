@@ -109,6 +109,7 @@ enum Projection {
 #[derive(Debug, Clone, Serialize)]
 enum Statement {
     Create(TableSchema),
+    AddForeignKey(crate::table::ForeignKey),
     CreateIndex {
         name: String,
         table: String,
@@ -368,6 +369,26 @@ impl Parser {
             };
             schema.validate()?;
             Statement::Create(schema)
+        } else if self.word("ALTER") {
+            self.require_word("TABLE")?;
+            let table = self.ident()?;
+            self.require_word("ADD")?;
+            self.require_word("FOREIGN")?;
+            self.require_word("KEY")?;
+            self.require_punct('(')?;
+            let column = self.ident()?;
+            self.require_punct(')')?;
+            self.require_word("REFERENCES")?;
+            let parent = self.ident()?;
+            self.require_punct('(')?;
+            let parent_column = self.ident()?;
+            self.require_punct(')')?;
+            Statement::AddForeignKey(crate::table::ForeignKey {
+                table,
+                column,
+                parent,
+                parent_column,
+            })
         } else if self.word("INSERT") {
             self.require_word("INTO")?;
             let table = self.ident()?;
@@ -1294,12 +1315,20 @@ pub fn execute_bound(
         });
     }
     let request = request.ok_or(Error::Invalid("sql: write requires request key"))?;
+    let fingerprint =
+        hash(&serde_json::to_vec(&stmt).map_err(|_| Error::Invalid("sql: fingerprint encoding"))?);
+    if let Some(result) = replay_write(db, request, &fingerprint)? {
+        return Ok(result);
+    }
+    let ops = prepare_write(&Tables::new(db), stmt)?;
+    commit_write(db, request, fingerprint, ops)
+}
+
+fn replay_write(db: &NativeLog, request: &str, fingerprint: &str) -> Result<Option<SqlResult>> {
     if request.len() < 12 || !valid_id(request) {
         return Err(Error::Invalid("sql: invalid request key"));
     }
     let key = format!("s{}", hash(request.as_bytes()));
-    let fingerprint =
-        hash(&serde_json::to_vec(&stmt).map_err(|_| Error::Invalid("sql: fingerprint encoding"))?);
     let stored = db.read(RECEIPTS, &key)?;
     let engine = db.lookup_receipt(&key)?;
     match (stored, engine) {
@@ -1322,19 +1351,22 @@ pub fn execute_bound(
                     "sql: request key reused with different statement".into(),
                 ));
             }
-            return Ok(SqlResult::Write {
+            return Ok(Some(SqlResult::Write {
                 affected: receipt.affected,
                 sequence: receipt.sequence,
                 replayed: true,
-            });
+            }));
         }
         (None, None) => {}
         _ => return Err(Error::Invalid("sql: incomplete receipt")),
     }
+    Ok(None)
+}
+fn prepare_write(t: &Tables<'_>, stmt: Statement) -> Result<Vec<NativeMutation>> {
     let mut ops = Vec::new();
-    let t = Tables::new(db);
     match stmt {
         Statement::Create(schema) => ops.push(t.prepare_create(&schema)?),
+        Statement::AddForeignKey(fk) => ops.push(t.prepare_foreign_key(&fk)?),
         Statement::CreateIndex {
             name,
             table,
@@ -1357,7 +1389,7 @@ pub fn execute_bound(
             assignments,
             where_,
         } => {
-            let schema = required_schema(&t, &table)?;
+            let schema = required_schema(t, &table)?;
             for (c, v) in &assignments {
                 if c == &schema.primary_key || !type_ok(column(&schema, c)?, v) {
                     return Err(Error::Invalid(
@@ -1365,7 +1397,7 @@ pub fn execute_bound(
                     ));
                 }
             }
-            let rows = matching(&t, &schema, &where_)?;
+            let rows = matching(t, &schema, &where_)?;
             if rows.len() > MAX_WRITE {
                 return Err(Error::Capacity("sql: mutation matches more than 15 rows"));
             }
@@ -1379,8 +1411,8 @@ pub fn execute_bound(
             }
         }
         Statement::Delete { table, where_ } => {
-            let schema = required_schema(&t, &table)?;
-            let rows = matching(&t, &schema, &where_)?;
+            let schema = required_schema(t, &table)?;
+            let rows = matching(t, &schema, &where_)?;
             if rows.len() > MAX_WRITE {
                 return Err(Error::Capacity("sql: mutation matches more than 15 rows"));
             }
@@ -1396,6 +1428,15 @@ pub fn execute_bound(
             unreachable!()
         }
     }
+    Ok(ops)
+}
+fn commit_write(
+    db: &mut NativeLog,
+    request: &str,
+    fingerprint: String,
+    mut ops: Vec<NativeMutation>,
+) -> Result<SqlResult> {
+    let key = format!("s{}", hash(request.as_bytes()));
     let affected = ops.len();
     let sequence = db
         .sequence()
@@ -1420,6 +1461,79 @@ pub fn execute_bound(
         sequence: commit.sequence,
         replayed: commit.replayed,
     })
+}
+
+/// B20 transaction: a bounded group of DML statements on distinct row addresses.
+/// All statements are planned on the same committed starting generation; no
+/// read-your-writes, DDL, or query statements. FK checks see the final state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BoundStatement {
+    pub sql: String,
+    #[serde(default)]
+    pub params: Vec<Cell>,
+}
+pub fn execute_transaction(
+    db: &mut NativeLog,
+    statements: &[BoundStatement],
+    request: &str,
+) -> Result<SqlResult> {
+    if statements.is_empty() || statements.len() > 15 {
+        return Err(Error::Invalid("sql: transaction requires 1..15 statements"));
+    }
+    let mut parsed = Vec::new();
+    for b in statements {
+        let stmt = parse_bound(&b.sql, &b.params)?;
+        if !matches!(
+            stmt,
+            Statement::Insert { .. } | Statement::Update { .. } | Statement::Delete { .. }
+        ) {
+            return Err(Error::Invalid("sql: transaction only permits DML"));
+        }
+        parsed.push(stmt);
+    }
+    let fingerprint = hash(
+        &serde_json::to_vec(&("sedravasql.sql-transaction.v1", &parsed))
+            .map_err(|_| Error::Invalid("sql: transaction fingerprint"))?,
+    );
+    if let Some(result) = replay_write(db, request, &fingerprint)? {
+        return Ok(result);
+    }
+    let t = Tables::new(db);
+    let mut ops = Vec::new();
+    let mut seen = HashSet::new();
+    for stmt in parsed {
+        // UPDATE/DELETE require PK equality in transaction mode. This avoids
+        // pretending snapshot-only planning implements sequential SQL semantics.
+        match &stmt {
+            Statement::Update { table, where_, .. } | Statement::Delete { table, where_ } => {
+                let schema = required_schema(&t, table)?;
+                if !where_
+                    .iter()
+                    .any(|p| p.column == schema.primary_key && p.op == "=")
+                {
+                    return Err(Error::Invalid(
+                        "sql: transaction UPDATE/DELETE require PK equality",
+                    ));
+                }
+            }
+            _ => {}
+        }
+        let next = prepare_write(&t, stmt)?;
+        // No-op DML is rejected in transaction mode (no ambiguous dependency).
+        if next.len() != 1 {
+            return Err(Error::Conflict(
+                "sql: transaction statement must affect exactly one row".into(),
+            ));
+        }
+        for op in next {
+            if !seen.insert((op.namespace.clone(), op.key.clone())) {
+                return Err(Error::Invalid("sql: repeated transaction target"));
+            }
+            ops.push(op);
+        }
+    }
+    commit_write(db, request, fingerprint, ops)
 }
 
 #[derive(Debug, Serialize)]

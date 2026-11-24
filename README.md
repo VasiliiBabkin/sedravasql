@@ -134,3 +134,5 @@ Experimental [B17 analytics and access plans](docs/NATIVE_SQL_B17.ru.md).
 Experimental [B18 JOIN](docs/NATIVE_SQL_B18.ru.md).
 
 Experimental [B19 indexes and analytical filters](docs/NATIVE_SQL_B19.ru.md).
+
+Experimental [B20 foreign keys and SQL transactions](docs/NATIVE_SQL_B20.ru.md).

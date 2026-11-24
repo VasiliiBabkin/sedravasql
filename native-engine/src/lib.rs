@@ -259,6 +259,7 @@ fn prepare(state: &Replay, request_key: &str, ops: &[NativeMutation]) -> Result<
         };
         entries.push(row);
     }
+    table::validate_constraints(state, &entries)?;
     Ok(PreparedBatch {
         request_key: request_key.to_owned(),
         fingerprint: batch_fingerprint(ops)?,

@@ -208,3 +208,7 @@ No full accumulated-state clone per frame; prepare validated delta, publish only
 ### B19 — index definitions, derived secondary cache, DISTINCT/HAVING
 
 [SQL and cache semantics](NATIVE_SQL_B19.ru.md). Durable index pages and cost optimizer remain pending.
+
+### B20 — foreign keys and disjoint-row SQL transactions
+
+[Constraints and atomic transaction subset](NATIVE_SQL_B20.ru.md). General transaction sessions and disk index pages pending.

@@ -428,3 +428,198 @@ impl<'a> Tables<'a> {
             .collect()
     }
 }
+
+/// B20: immutable foreign keys referencing a text primary key, RESTRICT semantics.
+/// The native prepare phase checks the prospective final state, including replay.
+const FK_CATALOG: &str = "sedravasql_fk_catalog";
+const FK_MAX: usize = 64;
+const FK_SCAN: usize = 4096;
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ForeignKey {
+    pub table: String,
+    pub column: String,
+    pub parent: String,
+    pub parent_column: String,
+}
+impl ForeignKey {
+    fn address(&self) -> String {
+        format!("{}.{}", self.table, self.column)
+    }
+    fn validate(&self, child: &TableSchema, parent: &TableSchema) -> Result<()> {
+        if child.name != self.table
+            || parent.name != self.parent
+            || self.table == self.parent
+            || parent.primary_key != self.parent_column
+            || !child
+                .columns
+                .iter()
+                .any(|c| c.name == self.column && c.kind == ColumnType::Text)
+        {
+            return Err(Error::Invalid(
+                "foreign key: expected text column referencing different table primary key",
+            ));
+        }
+        Ok(())
+    }
+}
+impl Tables<'_> {
+    pub(crate) fn prepare_foreign_key(&self, fk: &ForeignKey) -> Result<NativeMutation> {
+        fk.validate(&self.required(&fk.table)?, &self.required(&fk.parent)?)?;
+        Ok(NativeMutation {
+            namespace: FK_CATALOG.into(),
+            key: fk.address(),
+            expected_revision: 0,
+            change: NativeChange::Put(
+                serde_json::to_string(fk).map_err(|_| Error::Invalid("foreign key: encode"))?,
+            ),
+        })
+    }
+}
+fn fk_schema(state: &super::Replay, table: &str) -> Result<TableSchema> {
+    if !identifier(table) {
+        return Err(Error::Invalid("foreign key: table identifier"));
+    }
+    let row = state
+        .entries
+        .get(&(CATALOG.into(), table.into()))
+        .ok_or(Error::Invalid("foreign key: unknown table"))?;
+    let schema: TableSchema = serde_json::from_str(
+        row.value
+            .as_deref()
+            .ok_or(Error::Invalid("foreign key: deleted schema"))?,
+    )
+    .map_err(|_| Error::Invalid("foreign key: invalid schema"))?;
+    schema.validate()?;
+    if schema.name != table || row.revision != 1 {
+        return Err(Error::Invalid("foreign key: schema identity"));
+    }
+    Ok(schema)
+}
+fn fk_catalog_entry(row: &NativeEntry) -> Result<ForeignKey> {
+    let fk: ForeignKey = serde_json::from_str(
+        row.value
+            .as_deref()
+            .ok_or(Error::Invalid("foreign key: DROP unsupported"))?,
+    )
+    .map_err(|_| Error::Invalid("foreign key: invalid definition"))?;
+    if row.revision != 1 || fk.address() != row.key {
+        return Err(Error::Invalid("foreign key: immutable definition identity"));
+    }
+    Ok(fk)
+}
+fn final_entry<'a>(
+    state: &'a super::Replay,
+    changes: &'a [NativeEntry],
+    ns: &str,
+    k: &str,
+) -> Option<&'a NativeEntry> {
+    changes
+        .iter()
+        .find(|r| r.namespace == ns && r.key == k)
+        .or_else(|| state.entries.get(&(ns.into(), k.into())))
+}
+fn validate_child(
+    state: &super::Replay,
+    changes: &[NativeEntry],
+    fk: &ForeignKey,
+    child: &TableSchema,
+    parent: &TableSchema,
+    row: &NativeEntry,
+) -> Result<()> {
+    let Some(values) = Tables::decode(child, row.clone())?.values else {
+        return Ok(());
+    };
+    let Some(Cell::Text(key)) = values.get(&fk.column) else {
+        return Err(Error::Invalid("foreign key: invalid child value"));
+    };
+    if !valid_id(key) {
+        return Err(Error::Conflict(
+            "foreign key: invalid referenced key".into(),
+        ));
+    }
+    let target = final_entry(state, changes, &parent.namespace(), key);
+    if let Some(target) = target {
+        if Tables::decode(parent, target.clone())?.values.is_some() {
+            return Ok(());
+        }
+    }
+    Err(Error::Conflict(
+        "foreign key: referenced parent is absent".into(),
+    ))
+}
+pub(super) fn validate_constraints(state: &super::Replay, changes: &[NativeEntry]) -> Result<()> {
+    use std::ops::Bound::{Included, Unbounded};
+    // No cost for the legacy raw KV-only path beyond this range lookup.
+    if !changes.iter().any(|r| {
+        r.namespace == FK_CATALOG
+            || r.namespace == CATALOG
+            || r.namespace.starts_with("sedravasql_table.")
+    }) {
+        return Ok(());
+    }
+    let mut defs = Vec::new();
+    for (_, row) in state
+        .entries
+        .range((Included((FK_CATALOG.into(), String::new())), Unbounded))
+        .take_while(|((ns, _), _)| ns == FK_CATALOG)
+    {
+        defs.push((fk_catalog_entry(row)?, false));
+        if defs.len() > FK_MAX {
+            return Err(Error::Capacity("foreign key: definition budget"));
+        }
+    }
+    for row in changes.iter().filter(|r| r.namespace == FK_CATALOG) {
+        defs.push((fk_catalog_entry(row)?, true));
+        if defs.len() > FK_MAX {
+            return Err(Error::Capacity("foreign key: definition budget"));
+        }
+    }
+    // Do not allow changes to schema identities under an active constraint.
+    for (fk, created) in defs {
+        if changes
+            .iter()
+            .any(|r| r.namespace == CATALOG && (r.key == fk.table || r.key == fk.parent))
+        {
+            return Err(Error::Invalid("foreign key: constrained schema mutation"));
+        }
+        let child_ns = format!("sedravasql_table.{}", fk.table);
+        let parent_ns = format!("sedravasql_table.{}", fk.parent);
+        let child_changed = changes.iter().any(|r| r.namespace == child_ns);
+        let parent_changed = changes.iter().any(|r| r.namespace == parent_ns);
+        if !created && !child_changed && !parent_changed {
+            continue;
+        }
+        let child = fk_schema(state, &fk.table)?;
+        let parent = fk_schema(state, &fk.parent)?;
+        fk.validate(&child, &parent)?;
+        // Parent deletion or constraint creation can affect untouched child rows.
+        if created
+            || changes
+                .iter()
+                .any(|r| r.namespace == parent_ns && r.value.is_none())
+        {
+            let mut scanned = 0;
+            for (_, old) in state
+                .entries
+                .range((Included((child_ns.clone(), String::new())), Unbounded))
+                .take_while(|((ns, _), _)| ns == &child_ns)
+            {
+                scanned += 1;
+                if scanned > FK_SCAN {
+                    return Err(Error::Capacity("foreign key: child scan budget"));
+                }
+                let row = final_entry(state, changes, &child_ns, &old.key).expect("existing entry");
+                validate_child(state, changes, &fk, &child, &parent, row)?;
+            }
+        }
+        for row in changes.iter().filter(|r| r.namespace == child_ns) {
+            validate_child(state, changes, &fk, &child, &parent, row)?;
+        }
+        // A parent update must still decode as a valid parent row.
+        for row in changes.iter().filter(|r| r.namespace == parent_ns) {
+            Tables::decode(&parent, row.clone())?;
+        }
+    }
+    Ok(())
+}

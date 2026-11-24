@@ -1,0 +1,1 @@
+{"stage":"B20","environment":"VDS Linux","native_rust_pass":55,"sqlite_rust_pass":21,"strict_clippy":"PASS","cli_regressions":"PASS","foreign_key":"PASS","atomic_disjoint_row_transaction":"PASS","replay":"PASS","sequential_transactions":false,"disk_index_pages":false,"production":false}
