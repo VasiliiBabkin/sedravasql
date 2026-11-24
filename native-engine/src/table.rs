@@ -263,12 +263,22 @@ impl<'a> Tables<'a> {
         )
     }
     fn decode(schema: &TableSchema, row: NativeEntry) -> Result<TableRow> {
+        Self::decode_with_hash(schema, &schema.hash()?, row)
+    }
+
+    // The schema is validated and immutable for this borrowed read operation.
+    // Still validate every stored row, including its schema digest and key.
+    fn decode_with_hash(
+        schema: &TableSchema,
+        schema_hash: &str,
+        row: NativeEntry,
+    ) -> Result<TableRow> {
         let values = match row.value {
             None => None,
             Some(value) => {
                 let stored: StoredRow = serde_json::from_str(&value)
                     .map_err(|_| Error::Invalid("table: invalid stored row"))?;
-                if stored.schema_sha256 != schema.hash()?
+                if stored.schema_sha256 != schema_hash
                     || schema.validate_row(&stored.values)? != row.key
                 {
                     return Err(Error::Invalid("table: stored row schema/key mismatch"));
@@ -284,6 +294,15 @@ impl<'a> Tables<'a> {
     }
     pub fn index(&self, table: &str, column: &str) -> Result<Option<IndexDefinition>> {
         let schema = self.required(table)?;
+        self.index_with_schema(&schema, &schema.hash()?, column)
+    }
+    fn index_with_schema(
+        &self,
+        schema: &TableSchema,
+        schema_hash: &str,
+        column: &str,
+    ) -> Result<Option<IndexDefinition>> {
+        let table = schema.name.as_str();
         if !schema.columns.iter().any(|c| c.name == column) {
             return Err(Error::Invalid("index: unknown column"));
         }
@@ -298,7 +317,7 @@ impl<'a> Tables<'a> {
         if row.revision != 1
             || definition.table != table
             || definition.column != column
-            || definition.schema_sha256 != schema.hash()?
+            || definition.schema_sha256 != schema_hash
             || !identifier(&definition.name)
         {
             return Err(Error::Invalid("index: identity/schema mismatch"));
@@ -356,16 +375,32 @@ impl<'a> Tables<'a> {
         column: &str,
         value: &Cell,
     ) -> Result<Option<Vec<TableRow>>> {
-        if self.index(table, column)?.is_none() {
+        let schema = self.required(table)?;
+        self.index_lookup_with_schema(&schema, column, value)
+    }
+    pub(crate) fn index_lookup_with_schema(
+        &self,
+        schema: &TableSchema,
+        column: &str,
+        value: &Cell,
+    ) -> Result<Option<Vec<TableRow>>> {
+        let schema_hash = schema.hash()?;
+        if self
+            .index_with_schema(schema, &schema_hash, column)?
+            .is_none()
+        {
             return Ok(None);
         }
+        let table = schema.name.as_str();
+        let namespace = schema.namespace();
         let cache_key = (table.to_owned(), column.to_owned());
         if !self.db.secondary_cache.borrow().contains_key(&cache_key) {
             let mut map: BTreeMap<Cell, Vec<String>> = BTreeMap::new();
             let mut after = None;
             let mut seen = 0;
             loop {
-                let page = self.scan(table, after.as_deref(), 256)?;
+                let page =
+                    self.scan_with_hash(schema, &schema_hash, &namespace, after.as_deref(), 256)?;
                 if page.is_empty() {
                     break;
                 }
@@ -402,7 +437,7 @@ impl<'a> Tables<'a> {
         let mut rows = Vec::with_capacity(keys.len());
         for key in keys {
             let row = self
-                .get(table, &key)?
+                .get_with_hash(schema, &schema_hash, &namespace, &key)?
                 .ok_or(Error::Invalid("index: missing indexed row"))?;
             if row.values.as_ref().and_then(|r| r.get(column)) != Some(value) {
                 return Err(Error::Invalid("index: stale indexed row"));
@@ -413,18 +448,52 @@ impl<'a> Tables<'a> {
     }
     pub fn get(&self, table: &str, key: &str) -> Result<Option<TableRow>> {
         let schema = self.required(table)?;
+        self.get_with_schema(&schema, key)
+    }
+    pub(crate) fn get_with_schema(
+        &self,
+        schema: &TableSchema,
+        key: &str,
+    ) -> Result<Option<TableRow>> {
+        self.get_with_hash(schema, &schema.hash()?, &schema.namespace(), key)
+    }
+    fn get_with_hash(
+        &self,
+        schema: &TableSchema,
+        schema_hash: &str,
+        namespace: &str,
+        key: &str,
+    ) -> Result<Option<TableRow>> {
         self.db
-            .read(&schema.namespace(), key)?
-            .map(|r| Self::decode(&schema, r))
+            .read(namespace, key)?
+            .map(|r| Self::decode_with_hash(schema, schema_hash, r))
             .transpose()
     }
     /// Primary-key ordered, exclusive after key, includes tombstones.
     pub fn scan(&self, table: &str, after: Option<&str>, limit: usize) -> Result<Vec<TableRow>> {
         let schema = self.required(table)?;
+        self.scan_with_schema(&schema, after, limit)
+    }
+    pub(crate) fn scan_with_schema(
+        &self,
+        schema: &TableSchema,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<TableRow>> {
+        self.scan_with_hash(schema, &schema.hash()?, &schema.namespace(), after, limit)
+    }
+    fn scan_with_hash(
+        &self,
+        schema: &TableSchema,
+        schema_hash: &str,
+        namespace: &str,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<TableRow>> {
         self.db
-            .scan_namespace(&schema.namespace(), after, limit)?
+            .scan_namespace(namespace, after, limit)?
             .into_iter()
-            .map(|r| Self::decode(&schema, r))
+            .map(|r| Self::decode_with_hash(schema, schema_hash, r))
             .collect()
     }
 }

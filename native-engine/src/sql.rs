@@ -718,7 +718,7 @@ fn matching(
             if !valid_id(key) {
                 return Ok(vec![]);
             }
-            if let Some(r) = t.get(&schema.name, key)? {
+            if let Some(r) = t.get_with_schema(schema, key)? {
                 if let Some(values) = r.values {
                     if matches_row(&values, where_)? {
                         return Ok(vec![(r.key, r.revision, values)]);
@@ -729,7 +729,7 @@ fn matching(
         }
     }
     for p in where_.iter().filter(|p| p.op == "=") {
-        if let Some(rows) = t.index_lookup(&schema.name, &p.column, &p.value)? {
+        if let Some(rows) = t.index_lookup_with_schema(schema, &p.column, &p.value)? {
             let mut out = vec![];
             for row in rows {
                 let values = row.values.ok_or(Error::Invalid("index: tombstone"))?;
@@ -744,7 +744,7 @@ fn matching(
     let mut seen = 0;
     let mut out = Vec::new();
     loop {
-        let page = t.scan(&schema.name, after.as_deref(), 256)?;
+        let page = t.scan_with_schema(schema, after.as_deref(), 256)?;
         if page.is_empty() {
             break;
         }
