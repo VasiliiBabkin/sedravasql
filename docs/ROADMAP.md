@@ -204,3 +204,7 @@ No full accumulated-state clone per frame; prepare validated delta, publish only
 ### B18 — two-table native JOIN
 
 [INNER/LEFT JOIN, bounded query-local index](NATIVE_SQL_B18.ru.md). Persistent secondary indexes pending.
+
+### B19 — index definitions, derived secondary cache, DISTINCT/HAVING
+
+[SQL and cache semantics](NATIVE_SQL_B19.ru.md). Durable index pages and cost optimizer remain pending.

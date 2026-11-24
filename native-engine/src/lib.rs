@@ -450,6 +450,7 @@ pub struct NativeLog {
     poisoned: bool,
     log_bytes: u64,
     limits: NativeLimits,
+    secondary_cache: std::cell::RefCell<table::IndexCache>,
 }
 impl NativeLog {
     pub fn create(path: &Path) -> Result<Self> {
@@ -490,6 +491,7 @@ impl NativeLog {
             poisoned: false,
             log_bytes,
             limits: NativeLimits::default(),
+            secondary_cache: Default::default(),
         })
     }
     pub fn open(path: &Path) -> Result<Self> {
@@ -510,6 +512,7 @@ impl NativeLog {
             poisoned: false,
             log_bytes,
             limits: NativeLimits::default(),
+            secondary_cache: Default::default(),
         })
     }
     pub fn verify(&mut self) -> Result<()> {
@@ -710,6 +713,16 @@ impl TransactionalStore for NativeLog {
         }
         let result = pending.result.clone();
         apply(&mut self.state, pending, checksum);
+        // Cached indexes are derived data, never an independent durable state.
+        // Invalidate only indexes whose table/catalog was modified, after fsync.
+        self.secondary_cache.get_mut().retain(|(table, _), _| {
+            let ns = format!("sedravasql_table.{table}");
+            let catalog = format!("sedravasql_index_catalog.{table}");
+            !result
+                .entries
+                .iter()
+                .any(|e| e.namespace == ns || e.namespace == catalog)
+        });
         self.log_bytes = projected;
         Ok(result)
     }

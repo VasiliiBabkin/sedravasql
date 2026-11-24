@@ -109,12 +109,18 @@ enum Projection {
 #[derive(Debug, Clone, Serialize)]
 enum Statement {
     Create(TableSchema),
+    CreateIndex {
+        name: String,
+        table: String,
+        column: String,
+    },
     Insert {
         table: String,
         columns: Vec<String>,
         values: Vec<Cell>,
     },
     Select {
+        distinct: bool,
         table: String,
         columns: Vec<String>,
         where_: Vec<Predicate>,
@@ -122,6 +128,7 @@ enum Statement {
         limit: usize,
     },
     Aggregate {
+        having: Vec<Predicate>,
         table: String,
         projections: Vec<Projection>,
         where_: Vec<Predicate>,
@@ -273,7 +280,10 @@ impl Parser {
         Ok(cols)
     }
     fn where_clause(&mut self, required: bool) -> Result<Vec<Predicate>> {
-        if !self.word("WHERE") {
+        self.predicates_after("WHERE", required)
+    }
+    fn predicates_after(&mut self, keyword: &str, required: bool) -> Result<Vec<Predicate>> {
+        if !self.word(keyword) {
             return if required {
                 Err(Error::Invalid("sql: mutation requires WHERE"))
             } else {
@@ -303,6 +313,23 @@ impl Parser {
     }
     fn parse(mut self) -> Result<Statement> {
         let result = if self.word("CREATE") {
+            if self.word("INDEX") {
+                let name = self.ident()?;
+                self.require_word("ON")?;
+                let table = self.ident()?;
+                self.require_punct('(')?;
+                let column = self.ident()?;
+                self.require_punct(')')?;
+                self.punct(';');
+                if self.pos != self.tokens.len() {
+                    return Err(Error::Invalid("sql: trailing index tokens"));
+                }
+                return Ok(Statement::CreateIndex {
+                    name,
+                    table,
+                    column,
+                });
+            }
             self.require_word("TABLE")?;
             let name = self.ident()?;
             self.require_punct('(')?;
@@ -366,6 +393,7 @@ impl Parser {
                 values,
             }
         } else if self.word("SELECT") {
+            let distinct = self.word("DISTINCT");
             let star = self.punct('*');
             let mut projections = Vec::new();
             if !star {
@@ -417,6 +445,9 @@ impl Parser {
             };
             let joined = self.word("JOIN");
             if outer || inner || joined {
+                if distinct {
+                    return Err(Error::Invalid("sql: DISTINCT JOIN not supported"));
+                }
                 if !joined {
                     return Err(Error::Invalid("sql: expected JOIN"));
                 }
@@ -486,6 +517,7 @@ impl Parser {
             } else {
                 None
             };
+            let having = self.predicates_after("HAVING", false)?;
             let order = if self.word("ORDER") {
                 self.require_word("BY")?;
                 let col = self.ident()?;
@@ -506,14 +538,19 @@ impl Parser {
                 100
             };
             if group.is_some()
+                || !having.is_empty()
                 || projections
                     .iter()
                     .any(|p| matches!(p, Projection::Aggregate { .. }))
             {
+                if distinct {
+                    return Err(Error::Invalid("sql: aggregate DISTINCT unsupported"));
+                }
                 if star {
                     return Err(Error::Invalid("sql: aggregate SELECT * unsupported"));
                 }
                 Statement::Aggregate {
+                    having,
                     table,
                     projections,
                     where_,
@@ -531,6 +568,7 @@ impl Parser {
                     .collect::<Vec<_>>();
                 unique(&columns)?;
                 Statement::Select {
+                    distinct,
                     table,
                     columns,
                     where_,
@@ -667,6 +705,18 @@ fn matching(
                 }
             }
             return Ok(vec![]);
+        }
+    }
+    for p in where_.iter().filter(|p| p.op == "=") {
+        if let Some(rows) = t.index_lookup(&schema.name, &p.column, &p.value)? {
+            let mut out = vec![];
+            for row in rows {
+                let values = row.values.ok_or(Error::Invalid("index: tombstone"))?;
+                if matches_row(&values, where_)? {
+                    out.push((row.key, row.revision, values));
+                }
+            }
+            return Ok(out);
         }
     }
     let mut after = None;
@@ -849,6 +899,7 @@ fn result_cmp(a: &serde_json::Value, b: &serde_json::Value) -> Ordering {
         _ => unreachable!("homogeneous validated projections"),
     }
 }
+#[allow(clippy::too_many_arguments)] // explicit bounded query components
 fn aggregate_query(
     t: &Tables<'_>,
     schema: &TableSchema,
@@ -857,6 +908,7 @@ fn aggregate_query(
     group: Option<&str>,
     order: Option<&(String, bool)>,
     limit: usize,
+    having: &[Predicate],
 ) -> Result<SqlResult> {
     if let Some(g) = group {
         column(schema, g)?;
@@ -887,6 +939,34 @@ fn aggregate_query(
         }
     }
     unique(&labels)?;
+    let mut checks = vec![];
+    for p in having {
+        let i = labels
+            .iter()
+            .position(|x| x == &p.column)
+            .ok_or(Error::Invalid(
+                "sql: HAVING requires projected name or alias",
+            ))?;
+        let kind = match &projections[i] {
+            Projection::Column(c) => column(schema, c)?,
+            Projection::Aggregate { function, .. }
+                if matches!(function.as_str(), "COUNT" | "SUM" | "AVG") =>
+            {
+                ColumnType::Int
+            }
+            Projection::Aggregate { column: c, .. } => column(
+                schema,
+                c.as_deref()
+                    .ok_or(Error::Invalid("sql: invalid aggregate"))?,
+            )?,
+        };
+        if !type_ok(kind, &p.value)
+            || (kind == ColumnType::Bool && !matches!(p.op.as_str(), "=" | "!=" | "<>"))
+        {
+            return Err(Error::Invalid("sql: invalid HAVING predicate type"));
+        }
+        checks.push((i, p));
+    }
     let sort = if let Some((c, d)) = order {
         Some((
             labels.iter().position(|n| n == c).ok_or(Error::Invalid(
@@ -919,6 +999,23 @@ fn aggregate_query(
                 .collect()
         })
         .collect();
+    rows.retain(|row| {
+        checks.iter().all(|(i, p)| {
+            if row[*i].is_null() {
+                return false;
+            }
+            let o = result_cmp(&row[*i], &json_cell(&p.value));
+            match p.op.as_str() {
+                "=" => o == Ordering::Equal,
+                "!=" | "<>" => o != Ordering::Equal,
+                "<" => o == Ordering::Less,
+                ">" => o == Ordering::Greater,
+                "<=" => o != Ordering::Greater,
+                ">=" => o != Ordering::Less,
+                _ => false,
+            }
+        })
+    });
     if let Some((i, desc)) = sort {
         rows.sort_by(|a, b| {
             let o = result_cmp(&a[i], &b[i]);
@@ -1122,6 +1219,7 @@ pub fn execute_bound(
         return join_query(&Tables::new(db), &stmt);
     }
     if let Statement::Aggregate {
+        having,
         table,
         projections,
         where_,
@@ -1143,9 +1241,11 @@ pub fn execute_bound(
             group.as_deref(),
             order.as_ref(),
             *limit,
+            having,
         );
     }
     if let Statement::Select {
+        distinct,
         table,
         columns,
         where_,
@@ -1168,6 +1268,9 @@ pub fn execute_bound(
         }
         if let Some((c, _)) = order {
             column(&schema, c)?;
+            if *distinct && !cols.contains(c) {
+                return Err(Error::Invalid("sql: DISTINCT ORDER BY must be projected"));
+            }
         }
         let mut rows = matching(&t, &schema, where_)?;
         if let Some((c, desc)) = order {
@@ -1178,10 +1281,12 @@ pub fn execute_bound(
                 o.then_with(|| a.0.cmp(&b.0))
             });
         }
+        let mut seen = std::collections::BTreeSet::new();
         let rows = rows
             .into_iter()
+            .map(|(_, _, r)| cols.iter().map(|c| r[c].clone()).collect::<Vec<_>>())
+            .filter(|r| !*distinct || seen.insert(r.clone()))
             .take(*limit)
-            .map(|(_, _, r)| cols.iter().map(|c| r[c].clone()).collect())
             .collect();
         return Ok(SqlResult::Rows {
             columns: cols,
@@ -1230,6 +1335,11 @@ pub fn execute_bound(
     let t = Tables::new(db);
     match stmt {
         Statement::Create(schema) => ops.push(t.prepare_create(&schema)?),
+        Statement::CreateIndex {
+            name,
+            table,
+            column,
+        } => ops.push(t.prepare_index(&name, &table, &column)?),
         Statement::Insert {
             table,
             columns,
@@ -1319,6 +1429,10 @@ pub struct QueryPlan {
     pub group_by: Option<String>,
     pub sort: bool,
     pub limit: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index_cached: Option<bool>,
 }
 pub fn explain(db: &mut NativeLog, sql: &str, params: &[Cell]) -> Result<QueryPlan> {
     let stmt = parse_bound(sql, params)?;
@@ -1346,6 +1460,8 @@ pub fn explain(db: &mut NativeLog, sql: &str, params: &[Cell]) -> Result<QueryPl
             group_by: None,
             sort: order.is_some(),
             limit: *limit,
+            index_name: None,
+            index_cached: None,
         });
     }
     let (table, where_, aggregate, group_by, sort, limit) = match stmt {
@@ -1369,7 +1485,9 @@ pub fn explain(db: &mut NativeLog, sql: &str, params: &[Cell]) -> Result<QueryPl
     let t = Tables::new(db);
     let schema = required_schema(&t, &table)?;
     predicates(&schema, &where_)?;
-    let access = if where_
+    let mut index_name = None;
+    let mut index_cached = None;
+    let mut access = if where_
         .iter()
         .any(|p| p.column == schema.primary_key && p.op == "=")
     {
@@ -1377,11 +1495,23 @@ pub fn explain(db: &mut NativeLog, sql: &str, params: &[Cell]) -> Result<QueryPl
     } else {
         "bounded_table_scan"
     };
+    if access != "primary_key_lookup" {
+        for p in where_.iter().filter(|p| p.op == "=") {
+            if let Some(definition) = t.index(&schema.name, &p.column)? {
+                access = "secondary_index_lookup";
+                index_cached = Some(t.index_cached(&schema.name, &p.column));
+                index_name = Some(definition.name);
+                break;
+            }
+        }
+    }
     Ok(QueryPlan {
         access,
         aggregate,
         group_by,
         sort,
         limit,
+        index_name,
+        index_cached,
     })
 }

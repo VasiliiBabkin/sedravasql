@@ -28,7 +28,7 @@ pub struct TableSchema {
     pub primary_key: String,
     pub columns: Vec<Column>,
 }
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(untagged)]
 pub enum Cell {
     Int(i32),
@@ -128,6 +128,20 @@ pub enum TableMutation {
         key: String,
         expected_revision: u64,
     },
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct IndexDefinition {
+    pub name: String,
+    pub table: String,
+    pub column: String,
+    pub schema_sha256: String,
+}
+pub(crate) type IndexCache = BTreeMap<(String, String), BTreeMap<Cell, Vec<String>>>;
+const INDEX_SCAN: usize = 4096;
+const INDEX_CACHE_MAX: usize = 4;
+fn index_namespace(table: &str) -> String {
+    format!("sedravasql_index_catalog.{table}")
 }
 pub struct Tables<'a> {
     db: &'a mut NativeLog,
@@ -267,6 +281,135 @@ impl<'a> Tables<'a> {
             revision: row.revision,
             values,
         })
+    }
+    pub fn index(&self, table: &str, column: &str) -> Result<Option<IndexDefinition>> {
+        let schema = self.required(table)?;
+        if !schema.columns.iter().any(|c| c.name == column) {
+            return Err(Error::Invalid("index: unknown column"));
+        }
+        let Some(row) = self.db.read(&index_namespace(table), column)? else {
+            return Ok(None);
+        };
+        let raw = row
+            .value
+            .ok_or(Error::Invalid("index: unexpected tombstone"))?;
+        let definition: IndexDefinition =
+            serde_json::from_str(&raw).map_err(|_| Error::Invalid("index: invalid definition"))?;
+        if row.revision != 1
+            || definition.table != table
+            || definition.column != column
+            || definition.schema_sha256 != schema.hash()?
+            || !identifier(&definition.name)
+        {
+            return Err(Error::Invalid("index: identity/schema mismatch"));
+        }
+        Ok(Some(definition))
+    }
+    pub(crate) fn prepare_index(
+        &self,
+        name: &str,
+        table: &str,
+        column: &str,
+    ) -> Result<NativeMutation> {
+        let schema = self.required(table)?;
+        if !identifier(name)
+            || column == schema.primary_key
+            || !schema.columns.iter().any(|c| c.name == column)
+        {
+            return Err(Error::Invalid("index: invalid name or secondary column"));
+        }
+        let ns = index_namespace(table);
+        for row in self.db.scan_namespace(&ns, None, 16)? {
+            let existing = self
+                .index(table, &row.key)?
+                .ok_or(Error::Invalid("index: missing definition"))?;
+            if existing.name == name || existing.column == column {
+                return Err(Error::Conflict("index: existing name or column".into()));
+            }
+        }
+        let def = IndexDefinition {
+            name: name.into(),
+            table: table.into(),
+            column: column.into(),
+            schema_sha256: schema.hash()?,
+        };
+        Ok(NativeMutation {
+            namespace: ns,
+            key: column.into(),
+            expected_revision: 0,
+            change: NativeChange::Put(
+                serde_json::to_string(&def).map_err(|_| Error::Invalid("index: encoding"))?,
+            ),
+        })
+    }
+    pub fn index_cached(&self, table: &str, column: &str) -> bool {
+        self.db
+            .secondary_cache
+            .borrow()
+            .contains_key(&(table.into(), column.into()))
+    }
+    /// Definition persists in the journal. Rebuild a bounded in-memory ordered
+    /// index from validated rows on first access after open or table changes.
+    pub fn index_lookup(
+        &self,
+        table: &str,
+        column: &str,
+        value: &Cell,
+    ) -> Result<Option<Vec<TableRow>>> {
+        if self.index(table, column)?.is_none() {
+            return Ok(None);
+        }
+        let cache_key = (table.to_owned(), column.to_owned());
+        if !self.db.secondary_cache.borrow().contains_key(&cache_key) {
+            let mut map: BTreeMap<Cell, Vec<String>> = BTreeMap::new();
+            let mut after = None;
+            let mut seen = 0;
+            loop {
+                let page = self.scan(table, after.as_deref(), 256)?;
+                if page.is_empty() {
+                    break;
+                }
+                for row in page {
+                    seen += 1;
+                    if seen > INDEX_SCAN {
+                        return Err(Error::Capacity("index: rebuild scan budget"));
+                    }
+                    after = Some(row.key.clone());
+                    if let Some(values) = row.values {
+                        let v = values
+                            .get(column)
+                            .ok_or(Error::Invalid("index: missing value"))?;
+                        map.entry(v.clone()).or_default().push(row.key);
+                    }
+                }
+            }
+            let mut cache = self.db.secondary_cache.borrow_mut();
+            if cache.len() >= INDEX_CACHE_MAX {
+                if let Some(first) = cache.keys().next().cloned() {
+                    cache.remove(&first);
+                }
+            }
+            cache.insert(cache_key.clone(), map);
+        }
+        let keys = self
+            .db
+            .secondary_cache
+            .borrow()
+            .get(&cache_key)
+            .and_then(|m| m.get(value))
+            .cloned()
+            .unwrap_or_default();
+        let mut rows = Vec::with_capacity(keys.len());
+        for key in keys {
+            let row = self
+                .get(table, &key)?
+                .ok_or(Error::Invalid("index: missing indexed row"))?;
+            if row.values.as_ref().and_then(|r| r.get(column)) != Some(value) {
+                return Err(Error::Invalid("index: stale indexed row"));
+            }
+            rows.push(row);
+        }
+        Ok(Some(rows))
     }
     pub fn get(&self, table: &str, key: &str) -> Result<Option<TableRow>> {
         let schema = self.required(table)?;
