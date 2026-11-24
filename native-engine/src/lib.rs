@@ -18,6 +18,7 @@ pub mod restore;
 pub mod snapshot;
 pub mod sql;
 pub mod table;
+pub mod tree;
 
 use std::error::Error as StdError;
 use std::fmt;

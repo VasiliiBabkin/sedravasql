@@ -142,3 +142,5 @@ Experimental [B21/B22 paged read image](docs/NATIVE_PAGES_B21_B22.ru.md).
 Experimental [B23 sequential transactions](docs/NATIVE_SQL_B23.ru.md) and [page refresh](docs/NATIVE_PAGE_REFRESH_B23.ru.md).
 
 Experimental [B24 mutable pager](docs/NATIVE_MUTABLE_PAGER_B24.ru.md).
+
+Experimental [B25 dynamic tree](docs/NATIVE_TREE_B25.ru.md).

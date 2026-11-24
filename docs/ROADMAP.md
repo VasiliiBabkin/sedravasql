@@ -224,3 +224,7 @@ No full accumulated-state clone per frame; prepare validated delta, publish only
 ### B24 — mutable fixed-slot pager and redo WAL
 
 [Separate experimental pager](NATIVE_MUTABLE_PAGER_B24.ru.md). Dynamic B+Tree and integration with native SQL still pending.
+
+### B25 — dynamic ordered tree
+
+[Experimental B+ tree on pager B24](NATIVE_TREE_B25.ru.md). Physical merging, overflow and live SQL integration pending.
