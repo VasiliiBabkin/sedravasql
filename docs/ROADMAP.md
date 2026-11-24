@@ -200,3 +200,7 @@ No full accumulated-state clone per frame; prepare validated delta, publish only
 ### B17 — aggregates, grouping and access plan
 
 [Native analytical SELECT and EXPLAIN](NATIVE_SQL_B17.ru.md). JOIN and secondary indexes pending.
+
+### B18 — two-table native JOIN
+
+[INNER/LEFT JOIN, bounded query-local index](NATIVE_SQL_B18.ru.md). Persistent secondary indexes pending.

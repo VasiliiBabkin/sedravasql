@@ -71,7 +71,7 @@ fn lex(sql: &str) -> Result<Vec<Tok>> {
                 Tok::Text(v)
             }
             '?' => Tok::Param,
-            '(' | ')' | ',' | '*' | ';' => Tok::P(c),
+            '(' | ')' | ',' | '*' | ';' | '.' => Tok::P(c),
             '=' | '<' | '>' | '!' => {
                 let mut op = String::from(c);
                 if (c == '<' && it.peek() == Some(&'>')) || (c != '=' && it.peek() == Some(&'=')) {
@@ -126,6 +126,17 @@ enum Statement {
         projections: Vec<Projection>,
         where_: Vec<Predicate>,
         group: Option<String>,
+        order: Option<(String, bool)>,
+        limit: usize,
+    },
+    Join {
+        left: String,
+        right: String,
+        outer: bool,
+        on_left: String,
+        on_right: String,
+        columns: Vec<String>,
+        where_: Vec<Predicate>,
         order: Option<(String, bool)>,
         limit: usize,
     },
@@ -216,6 +227,39 @@ impl Parser {
         } else {
             Err(Error::Invalid("sql: expected ="))
         }
+    }
+    fn qualified(&mut self) -> Result<String> {
+        let first = self.ident()?;
+        if self.punct('.') {
+            Ok(format!("{}.{}", first, self.ident()?))
+        } else {
+            Ok(first)
+        }
+    }
+    fn qualified_where(&mut self) -> Result<Vec<Predicate>> {
+        if !self.word("WHERE") {
+            return Ok(vec![]);
+        }
+        let mut out = vec![];
+        loop {
+            let column = self.qualified()?;
+            let op = match self.next() {
+                Some(Tok::Op(v)) => v,
+                _ => return Err(Error::Invalid("sql: expected join predicate operator")),
+            };
+            out.push(Predicate {
+                column,
+                op,
+                value: self.literal()?,
+            });
+            if out.len() > 16 {
+                return Err(Error::Capacity("sql: predicate limit"));
+            }
+            if !self.word("AND") {
+                break;
+            }
+        }
+        Ok(out)
     }
     fn names(&mut self) -> Result<Vec<String>> {
         let mut cols = vec![self.ident()?];
@@ -326,7 +370,7 @@ impl Parser {
             let mut projections = Vec::new();
             if !star {
                 loop {
-                    let name = self.ident()?;
+                    let name = self.qualified()?;
                     if self.punct('(') {
                         let function = name.to_ascii_uppercase();
                         if !matches!(function.as_str(), "COUNT" | "SUM" | "MIN" | "MAX" | "AVG") {
@@ -364,6 +408,77 @@ impl Parser {
             }
             self.require_word("FROM")?;
             let table = self.ident()?;
+            let outer = self.word("LEFT");
+            let inner = if outer {
+                self.word("OUTER");
+                false
+            } else {
+                self.word("INNER")
+            };
+            let joined = self.word("JOIN");
+            if outer || inner || joined {
+                if !joined {
+                    return Err(Error::Invalid("sql: expected JOIN"));
+                }
+                if star {
+                    return Err(Error::Invalid(
+                        "sql: JOIN requires explicit qualified projections",
+                    ));
+                }
+                let right = self.ident()?;
+                if table == right {
+                    return Err(Error::Invalid(
+                        "sql: self join requires aliases (unsupported)",
+                    ));
+                }
+                self.require_word("ON")?;
+                let on_left = self.qualified()?;
+                self.equal()?;
+                let on_right = self.qualified()?;
+                let where_ = self.qualified_where()?;
+                let order = if self.word("ORDER") {
+                    self.require_word("BY")?;
+                    let c = self.qualified()?;
+                    let desc = self.word("DESC");
+                    if !desc {
+                        self.word("ASC");
+                    }
+                    Some((c, desc))
+                } else {
+                    None
+                };
+                let limit = if self.word("LIMIT") {
+                    match self.next() {
+                        Some(Tok::Int(n)) if (1..=256).contains(&n) => n as usize,
+                        _ => return Err(Error::Invalid("sql: LIMIT must be 1..256")),
+                    }
+                } else {
+                    100
+                };
+                let mut columns = vec![];
+                for projection in projections {
+                    match projection {
+                        Projection::Column(n) => columns.push(n),
+                        _ => return Err(Error::Invalid("sql: aggregate JOIN not supported")),
+                    }
+                }
+                unique(&columns)?;
+                self.punct(';');
+                if self.pos != self.tokens.len() {
+                    return Err(Error::Invalid("sql: trailing JOIN tokens"));
+                }
+                return Ok(Statement::Join {
+                    left: table,
+                    right,
+                    outer,
+                    on_left,
+                    on_right,
+                    columns,
+                    where_,
+                    order,
+                    limit,
+                });
+            }
             let where_ = self.where_clause(false)?;
             let group = if self.word("GROUP") {
                 self.require_word("BY")?;
@@ -584,6 +699,10 @@ pub enum SqlResult {
         columns: Vec<String>,
         rows: Vec<Vec<Cell>>,
     },
+    JoinRows {
+        columns: Vec<String>,
+        rows: Vec<Vec<serde_json::Value>>,
+    },
     AggregateRows {
         columns: Vec<String>,
         rows: Vec<Vec<serde_json::Value>>,
@@ -646,7 +765,7 @@ pub fn check(sql: &str, params: &[Cell]) -> Result<SqlKind> {
     Ok(
         if matches!(
             parse_bound(sql, params)?,
-            Statement::Select { .. } | Statement::Aggregate { .. }
+            Statement::Select { .. } | Statement::Aggregate { .. } | Statement::Join { .. }
         ) {
             SqlKind::Query
         } else {
@@ -816,6 +935,176 @@ fn aggregate_query(
         rows,
     })
 }
+// Join keys are typed, deterministic and never coerced. The right relation is
+// indexed in-memory for this query only, not a persistent secondary index.
+fn resolve_join<'a>(
+    left: &TableSchema,
+    right: &TableSchema,
+    name: &'a str,
+) -> Result<(bool, &'a str, ColumnType)> {
+    let (table, col) = name
+        .split_once('.')
+        .ok_or(Error::Invalid("sql: JOIN columns must be table-qualified"))?;
+    if table == left.name {
+        Ok((false, col, column(left, col)?))
+    } else if table == right.name {
+        Ok((true, col, column(right, col)?))
+    } else {
+        Err(Error::Invalid("sql: unknown join table"))
+    }
+}
+fn join_value<'a>(
+    row: &'a Row,
+    other: Option<&'a Row>,
+    r: (bool, &str, ColumnType),
+) -> Option<&'a Cell> {
+    if r.0 {
+        other.and_then(|o| o.get(r.1))
+    } else {
+        row.get(r.1)
+    }
+}
+fn join_query(t: &Tables<'_>, stmt: &Statement) -> Result<SqlResult> {
+    let Statement::Join {
+        left,
+        right,
+        outer,
+        on_left,
+        on_right,
+        columns,
+        where_,
+        order,
+        limit,
+    } = stmt
+    else {
+        unreachable!()
+    };
+    let l = required_schema(t, left)?;
+    let r = required_schema(t, right)?;
+    let mut a = resolve_join(&l, &r, on_left)?;
+    let mut b = resolve_join(&l, &r, on_right)?;
+    if a.0 == b.0 || a.2 != b.2 {
+        return Err(Error::Invalid(
+            "sql: JOIN ON requires compatible columns from different tables",
+        ));
+    }
+    if a.0 {
+        std::mem::swap(&mut a, &mut b);
+    }
+    let projection = columns
+        .iter()
+        .map(|c| resolve_join(&l, &r, c))
+        .collect::<Result<Vec<_>>>()?;
+    let predicates = where_
+        .iter()
+        .map(|p| {
+            let col = resolve_join(&l, &r, &p.column)?;
+            if !type_ok(col.2, &p.value)
+                || (col.2 == ColumnType::Bool && !matches!(p.op.as_str(), "=" | "!=" | "<>"))
+            {
+                return Err(Error::Invalid("sql: JOIN predicate type"));
+            }
+            Ok((col, p))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let sort = order
+        .as_ref()
+        .map(|(c, d)| resolve_join(&l, &r, c).map(|c| (c, *d)))
+        .transpose()?;
+    let mut right_index: BTreeMap<GroupKey, Vec<Row>> = BTreeMap::new();
+    for (_, _, row) in matching(t, &r, &[])? {
+        right_index.entry(key(&row[b.1])).or_default().push(row);
+    }
+    let mut candidates = 0usize;
+    let mut out = Vec::new();
+    for (_, _, row) in matching(t, &l, &[])? {
+        let matches = right_index.get(&key(&row[a.1]));
+        let others: Vec<Option<&Row>> = match matches {
+            Some(rows) => rows.iter().map(Some).collect(),
+            None if *outer => vec![None],
+            None => vec![],
+        };
+        for other in others {
+            candidates += 1;
+            if candidates > 16384 {
+                return Err(Error::Capacity("sql: join candidate budget"));
+            }
+            let mut accepted = true;
+            for (col, p) in &predicates {
+                let Some(value) = join_value(&row, other, *col) else {
+                    accepted = false;
+                    break;
+                };
+                let o = cmp(value, &p.value)?;
+                let ok = match p.op.as_str() {
+                    "=" => o == Ordering::Equal,
+                    "!=" | "<>" => o != Ordering::Equal,
+                    "<" => o == Ordering::Less,
+                    ">" => o == Ordering::Greater,
+                    "<=" => o != Ordering::Greater,
+                    ">=" => o != Ordering::Less,
+                    _ => unreachable!(),
+                };
+                if !ok {
+                    accepted = false;
+                    break;
+                }
+            }
+            if accepted {
+                let values = projection
+                    .iter()
+                    .map(|c| {
+                        join_value(&row, other, *c)
+                            .map(json_cell)
+                            .unwrap_or(serde_json::Value::Null)
+                    })
+                    .collect::<Vec<_>>();
+                let order_key = sort
+                    .as_ref()
+                    .and_then(|(c, _)| join_value(&row, other, *c))
+                    .map(json_cell)
+                    .unwrap_or(serde_json::Value::Null);
+                if out.len() < *limit {
+                    out.push((order_key, values));
+                } else if let Some((_, desc)) = sort {
+                    // Retain only best LIMIT rows, with stable input-order ties.
+                    let compare = |a: &serde_json::Value, b: &serde_json::Value| {
+                        let o = result_cmp(a, b);
+                        if desc {
+                            o.reverse()
+                        } else {
+                            o
+                        }
+                    };
+                    let worst = out
+                        .iter()
+                        .enumerate()
+                        .max_by(|(_, a), (_, b)| compare(&a.0, &b.0))
+                        .map(|(i, _)| i)
+                        .unwrap();
+                    if compare(&order_key, &out[worst].0) == Ordering::Less {
+                        out.remove(worst);
+                        out.push((order_key, values));
+                    }
+                }
+            }
+        }
+    }
+    if let Some((_, desc)) = sort {
+        out.sort_by(|a, b| {
+            let o = result_cmp(&a.0, &b.0);
+            if desc {
+                o.reverse()
+            } else {
+                o
+            }
+        });
+    }
+    Ok(SqlResult::JoinRows {
+        columns: columns.clone(),
+        rows: out.into_iter().take(*limit).map(|(_, v)| v).collect(),
+    })
+}
 pub fn execute(db: &mut NativeLog, sql: &str, request: Option<&str>) -> Result<SqlResult> {
     execute_bound(db, sql, &[], request)
 }
@@ -826,6 +1115,12 @@ pub fn execute_bound(
     request: Option<&str>,
 ) -> Result<SqlResult> {
     let stmt = parse_bound(sql, params)?;
+    if matches!(&stmt, Statement::Join { .. }) {
+        if request.is_some() {
+            return Err(Error::Invalid("sql: SELECT does not take request key"));
+        }
+        return join_query(&Tables::new(db), &stmt);
+    }
     if let Statement::Aggregate {
         table,
         projections,
@@ -987,7 +1282,9 @@ pub fn execute_bound(
                 })?);
             }
         }
-        Statement::Select { .. } | Statement::Aggregate { .. } => unreachable!(),
+        Statement::Select { .. } | Statement::Aggregate { .. } | Statement::Join { .. } => {
+            unreachable!()
+        }
     }
     let affected = ops.len();
     let sequence = db
@@ -1025,6 +1322,32 @@ pub struct QueryPlan {
 }
 pub fn explain(db: &mut NativeLog, sql: &str, params: &[Cell]) -> Result<QueryPlan> {
     let stmt = parse_bound(sql, params)?;
+    if let Statement::Join {
+        left,
+        right,
+        on_left,
+        on_right,
+        order,
+        limit,
+        ..
+    } = &stmt
+    {
+        let t = Tables::new(db);
+        let l = required_schema(&t, left)?;
+        let r = required_schema(&t, right)?;
+        let a = resolve_join(&l, &r, on_left)?;
+        let b = resolve_join(&l, &r, on_right)?;
+        if a.0 == b.0 || a.2 != b.2 {
+            return Err(Error::Invalid("sql: invalid JOIN ON"));
+        }
+        return Ok(QueryPlan {
+            access: "query_local_right_index",
+            aggregate: false,
+            group_by: None,
+            sort: order.is_some(),
+            limit: *limit,
+        });
+    }
     let (table, where_, aggregate, group_by, sort, limit) = match stmt {
         Statement::Select {
             table,

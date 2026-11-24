@@ -1,0 +1,1 @@
+{"stage":"B18","environment":"VDS Linux","native_rust_pass":51,"strict_clippy":"PASS","oracle_rows":26,"oracle_queries":5,"join":"PASS","cli_regressions":"PASS","persistent_index":false,"production":false}

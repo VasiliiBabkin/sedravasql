@@ -130,3 +130,5 @@ Experimental [B15b archives](docs/NATIVE_ARCHIVE_B15B.ru.md) and [B16a typed tab
 Experimental [native SQL B16b/B16c](docs/NATIVE_SQL_B16B.ru.md).
 
 Experimental [B17 analytics and access plans](docs/NATIVE_SQL_B17.ru.md).
+
+Experimental [B18 JOIN](docs/NATIVE_SQL_B18.ru.md).

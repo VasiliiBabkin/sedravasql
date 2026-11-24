@@ -1,0 +1,5 @@
+# B18 — JOIN двух таблиц
+
+SELECT с явно квалифицированными столбцами (Table.column), JOIN / INNER JOIN / LEFT [OUTER] JOIN, ON equality between columns of equal scalar type in two distinct tables. WHERE uses qualified column and scalar comparison, AND; ORDER BY qualified column ASC/DESC, LIMIT 1..256. LEFT JOIN null-extends unmatched right side; comparisons with null reject row. JoinRows has columns and JSON values including null. Query-local ordered multimap of right keys (not persisted); at most 4096 records scanned per side and 16384 join candidates. Retains only LIMIT best projected rows, deterministic stable input-order ties. No self join, aliases, aggregate JOIN, multiple JOIN, OR, IS NULL, secondary indexes or cost optimizer. EXPLAIN reports query_local_right_index and validates ON/table types, not entire projection. Dedicated trusted native journal, read-only query; existing write fingerprints unchanged.
+
+VDS: 51 native Rust tests; strict Clippy PASS; 26 rows/5 independent SQLite JOIN comparisons incl. null extension, multiplicity, WHERE, ORDER BY, LIMIT; unchanged journal; existing CLI regressions PASS. No production claim.
