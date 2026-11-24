@@ -1,0 +1,15 @@
+{
+  "schema": "b30-compact-evidence-v1",
+  "base_commit": "d0462132f88d967f3da1e295f10fb0a1d8d93184",
+  "toolchain": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+  "source_sha256": {
+    "native-engine/src/cow_tree.rs": "46520bad717ad8a2c61dd3e11340555667e14c82b39eec7075366264e85ad425",
+    "native-engine/tests/cow_b30.rs": "8b84556dea89d5c3847fd36ebaf8d3e29c4643ae21d57302deb9de5e966b4876",
+    "native-engine/examples/b30_compact.rs": "46b0a4d3e96d8626b77a909431707f44aba5e482093572f4ea3a5542ce041e43"
+  },
+  "binary_sha256": "827af1fe1882ecd5e6204fe0c8d436074202045852092b2727ca88ae695f9d3e",
+  "raw_sha256": "1881bbd0da7059d32faa370e37898eeb1465c68567f84d92022c29bde51e465c",
+  "tests_passed": 75,
+  "loadavg_1m_before": 3.86,
+  "cpu_affinity": 0
+}

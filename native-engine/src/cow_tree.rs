@@ -16,7 +16,8 @@ use std::{
 const SIZE: usize = 4096;
 const PAYLOAD_END: usize = SIZE - 32;
 const PAGE_MAGIC: &[u8; 8] = b"SEDRCOW1";
-const HEAD_MAGIC: &[u8; 8] = b"SEDRHDR1";
+const HEAD_V1: &[u8; 8] = b"SEDRHDR1";
+const HEAD_MAGIC: &[u8; 8] = b"SEDRHDR2";
 const MAX_PAGES: u64 = 65_536;
 const MAX_ROWS: u64 = 32_768;
 const MAX_DEPTH: usize = 8;
@@ -81,7 +82,7 @@ enum Node {
         children: Vec<u64>,
     },
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 struct Head {
     identity: [u8; 16],
     generation: u64,
@@ -166,7 +167,8 @@ impl Head {
         p
     }
     fn decode(p: &Page) -> Result<Self> {
-        checked(p, HEAD_MAGIC)?;
+        let legacy = &p[..8] == HEAD_V1;
+        checked(p, if legacy { HEAD_V1 } else { HEAD_MAGIC })?;
         let mut d = Decode {
             bytes: &p[..PAYLOAD_END],
             at: 8,
@@ -185,7 +187,7 @@ impl Head {
             || h.root == 0
             || h.root >= h.pages
             || h.rows > MAX_ROWS
-            || h.generation >= h.pages
+            || (legacy && h.generation >= h.pages)
         {
             return Err(bad());
         }
@@ -568,6 +570,179 @@ impl CowTree {
             }
         }
     }
+    // B30: an offline compact copy, never an in-place swap of the two
+    // committed files. Verify uncached source bytes before reading rows.
+    // Retain physical keys (including tombstones), revisions and generation.
+    fn snapshot_rows(&mut self) -> Result<Vec<Record>> {
+        self.healthy()?;
+        let hp = sibling(&self.path, ".head")?;
+        private_file(&hp)?;
+        let mut hf = File::open(&hp)?;
+        same_file(&hf, &hp)?;
+        if hf.metadata()?.len() != SIZE as u64
+            || Head::decode(&read_page(&mut hf, 0)?)? != self.head
+            || self.file.metadata()?.len() != self.head.pages * SIZE as u64
+            || read_page(&mut self.file, 0)? != header(&self.head.identity)
+            || exists(&sibling(&self.path, ".head.tmp")?)?
+        {
+            return Err(bad());
+        }
+        self.cache.clear();
+        self.fifo.clear();
+        let mut seen = BTreeSet::new();
+        let info = self.verify_node(self.head.root, 1, &mut seen)?;
+        if info.rows != self.head.rows || info.height != self.height {
+            return Err(bad());
+        }
+        let mut rows = Vec::with_capacity(info.rows as usize);
+        self.collect_rows(self.head.root, 1, &mut rows)?;
+        if rows.len() as u64 != self.head.rows || rows.windows(2).any(|w| w[0].key >= w[1].key) {
+            return Err(bad());
+        }
+        Ok(rows)
+    }
+
+    fn collect_rows(&mut self, id: u64, depth: usize, out: &mut Vec<Record>) -> Result<()> {
+        if depth > MAX_DEPTH {
+            return Err(bad());
+        }
+        match self.node(id)? {
+            Node::Leaf(rows) => {
+                if out.len() + rows.len() > MAX_ROWS as usize {
+                    return Err(cap());
+                }
+                out.extend(rows);
+            }
+            Node::Branch { children, .. } => {
+                for c in children {
+                    self.collect_rows(c, depth + 1, out)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Build a packed, independent snapshot with fresh identity. The source
+    /// is unchanged, including on failure. Never replace an existing target.
+    /// Memory is bounded by MAX_ROWS and VALUE_MAX. Incomplete destinations
+    /// after interruption must be reviewed or discarded, not resumed.
+    /// Publication is via the same synced staging manifest as commit.
+    pub fn compact_copy(&mut self, destination: &Path) -> Result<Report> {
+        private_parent(destination)?;
+        // Reserve the complete source and destination file families, including
+        // a staging name which may not exist yet. Resolve parent aliases.
+        let normalize = |p: &Path| -> Result<PathBuf> {
+            Ok(fs::canonicalize(p.parent().ok_or_else(bad)?)?.join(p.file_name().ok_or_else(bad)?))
+        };
+        let source = normalize(&self.path)?;
+        let target = normalize(destination)?;
+        let names = |p: &Path| -> Result<Vec<PathBuf>> {
+            Ok(vec![
+                p.to_owned(),
+                sibling(p, ".head")?,
+                sibling(p, ".head.tmp")?,
+                sibling(p, ".lock")?,
+            ])
+        };
+        let reserved = names(&source)?;
+        if names(&target)?.iter().any(|p| reserved.contains(p)) {
+            return Err(Error::Conflict(
+                "cow tree: overlapping compact file families".into(),
+            ));
+        }
+        let lock = ExclusiveLock::acquire(destination)?;
+        let hp = sibling(destination, ".head")?;
+        let tmp = sibling(destination, ".head.tmp")?;
+        if exists(destination)? || exists(&hp)? || exists(&tmp)? {
+            return Err(Error::Conflict(
+                "cow tree: compact destination exists".into(),
+            ));
+        }
+        let rows = self.snapshot_rows()?;
+        let mut identity = [0; 16];
+        File::open("/dev/urandom")?.read_exact(&mut identity)?;
+        let mut head = Head {
+            identity,
+            generation: self.head.generation,
+            rows: self.head.rows,
+            root: 1,
+            pages: 1,
+        };
+        let mut nodes = Vec::new();
+        let mut level = Vec::new();
+        // Children are written before parents; separators equal right-child
+        // minima. Dense leaves, evenly balanced groups of at most 25 children
+        // avoid an illegal one-child non-root branch.
+        for chunk in rows.chunks(LEAF_MAX) {
+            let id = nodes.len() as u64 + 1;
+            level.push((chunk[0].key.clone(), id));
+            nodes.push(Node::Leaf(chunk.to_vec()));
+        }
+        if level.is_empty() {
+            level.push((String::new(), 1));
+            nodes.push(Node::Leaf(vec![]));
+        }
+        let mut height = 1;
+        while level.len() > 1 {
+            height += 1;
+            if height > MAX_DEPTH {
+                return Err(cap());
+            }
+            let groups = level.len().div_ceil(BRANCH_MAX + 1);
+            let size = level.len() / groups;
+            let extra = level.len() % groups;
+            let mut next = Vec::with_capacity(groups);
+            let mut offset = 0;
+            for i in 0..groups {
+                let count = size + usize::from(i < extra);
+                let chunk = &level[offset..offset + count];
+                if !(2..=BRANCH_MAX + 1).contains(&count) {
+                    return Err(bad());
+                }
+                let id = nodes.len() as u64 + 1;
+                nodes.push(Node::Branch {
+                    keys: chunk[1..].iter().map(|(k, _)| k.clone()).collect(),
+                    children: chunk.iter().map(|(_, id)| *id).collect(),
+                });
+                next.push((chunk[0].0.clone(), id));
+                offset += count;
+            }
+            level = next;
+        }
+        head.root = level[0].1;
+        head.pages = nodes.len() as u64 + 1;
+        if head.pages > MAX_PAGES {
+            return Err(cap());
+        }
+        // Preflight each binary node before creating the output.
+        for (i, n) in nodes.iter().enumerate() {
+            encode(n, head, i as u64 + 1)?;
+        }
+        let mut file = new_file(destination)?;
+        file.write_all(&header(&identity))?;
+        for (i, n) in nodes.iter().enumerate() {
+            file.write_all(&encode(n, head, i as u64 + 1)?)?;
+        }
+        file.sync_all()?;
+        crate::debug_fault("cow_compact_after_pages", &file);
+        let mut stage = new_file(&tmp)?;
+        stage.write_all(&head.encode())?;
+        stage.sync_all()?;
+        crate::debug_fault("cow_compact_after_stage", &stage);
+        fs::rename(&tmp, &hp)?;
+        crate::debug_fault("cow_compact_after_publish", &stage);
+        sync_dir(destination)?;
+        drop(stage);
+        // Re-read the committed header and pages under the same destination
+        // lock; no race with a cooperating opener during verification.
+        let mut output = Self::from_parts(destination, file, lock, head);
+        output.height = height;
+        if output.snapshot_rows()? != rows {
+            return Err(bad());
+        }
+        Ok(output.report())
+    }
+
     pub fn report(&self) -> Report {
         Report {
             generation: self.head.generation,
