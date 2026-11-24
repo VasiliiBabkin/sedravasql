@@ -88,7 +88,7 @@ impl TableSchema {
     fn namespace(&self) -> String {
         format!("sedravasql_table.{}", self.name)
     }
-    fn validate_row(&self, row: &Row) -> Result<String> {
+    pub(crate) fn validate_row(&self, row: &Row) -> Result<String> {
         if row.len() != self.columns.len() {
             return Err(Error::Invalid("table: row column set mismatch"));
         }

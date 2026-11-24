@@ -778,6 +778,12 @@ pub enum SqlResult {
         columns: Vec<String>,
         rows: Vec<Vec<serde_json::Value>>,
     },
+    Transaction {
+        affected: usize,
+        sequence: u64,
+        replayed: bool,
+        reads: Vec<SqlResult>,
+    },
     Write {
         affected: usize,
         sequence: u64,
@@ -790,6 +796,8 @@ struct Receipt {
     fingerprint: String,
     affected: usize,
     sequence: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reads: Option<Vec<SqlResult>>,
 }
 fn hash(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
@@ -1351,10 +1359,18 @@ fn replay_write(db: &NativeLog, request: &str, fingerprint: &str) -> Result<Opti
                     "sql: request key reused with different statement".into(),
                 ));
             }
-            return Ok(Some(SqlResult::Write {
-                affected: receipt.affected,
-                sequence: receipt.sequence,
-                replayed: true,
+            return Ok(Some(match receipt.reads {
+                Some(reads) => SqlResult::Transaction {
+                    affected: receipt.affected,
+                    sequence: receipt.sequence,
+                    replayed: true,
+                    reads,
+                },
+                None => SqlResult::Write {
+                    affected: receipt.affected,
+                    sequence: receipt.sequence,
+                    replayed: true,
+                },
             }));
         }
         (None, None) => {}
@@ -1434,7 +1450,16 @@ fn commit_write(
     db: &mut NativeLog,
     request: &str,
     fingerprint: String,
+    ops: Vec<NativeMutation>,
+) -> Result<SqlResult> {
+    commit_with_reads(db, request, fingerprint, ops, None)
+}
+fn commit_with_reads(
+    db: &mut NativeLog,
+    request: &str,
+    fingerprint: String,
     mut ops: Vec<NativeMutation>,
+    reads: Option<Vec<SqlResult>>,
 ) -> Result<SqlResult> {
     let key = format!("s{}", hash(request.as_bytes()));
     let affected = ops.len();
@@ -1446,6 +1471,7 @@ fn commit_write(
         fingerprint,
         affected,
         sequence,
+        reads: reads.clone(),
     };
     ops.push(NativeMutation {
         namespace: RECEIPTS.into(),
@@ -1456,10 +1482,18 @@ fn commit_write(
         ),
     });
     let commit = db.commit_batch(&key, &ops)?;
-    Ok(SqlResult::Write {
-        affected,
-        sequence: commit.sequence,
-        replayed: commit.replayed,
+    Ok(match reads {
+        Some(reads) => SqlResult::Transaction {
+            affected,
+            sequence: commit.sequence,
+            replayed: commit.replayed,
+            reads,
+        },
+        None => SqlResult::Write {
+            affected,
+            sequence: commit.sequence,
+            replayed: commit.replayed,
+        },
     })
 }
 
@@ -1534,6 +1568,218 @@ pub fn execute_transaction(
         }
     }
     commit_write(db, request, fingerprint, ops)
+}
+
+// B23: bounded sequential transaction overlay. Each address advances its
+// revision once per committed frame, regardless of repeated logical updates.
+struct PendingRow {
+    original_revision: u64,
+    original_present: bool,
+    row: Option<Row>,
+    dirty: bool,
+}
+fn pending<'a>(
+    t: &Tables<'_>,
+    overlay: &'a mut BTreeMap<(String, String), PendingRow>,
+    table: &str,
+    key: &str,
+) -> Result<&'a mut PendingRow> {
+    use std::collections::btree_map::Entry;
+    match overlay.entry((table.into(), key.into())) {
+        Entry::Occupied(e) => Ok(e.into_mut()),
+        Entry::Vacant(e) => {
+            let old = t.get(table, key)?;
+            let rev = old.as_ref().map_or(0, |r| r.revision);
+            let row = old.and_then(|r| r.values);
+            Ok(e.insert(PendingRow {
+                original_revision: rev,
+                original_present: row.is_some(),
+                row,
+                dirty: false,
+            }))
+        }
+    }
+}
+fn transaction_key(schema: &TableSchema, where_: &[Predicate]) -> Result<String> {
+    predicates(schema, where_)?;
+    let key = where_
+        .iter()
+        .find(|p| p.column == schema.primary_key && p.op == "=")
+        .ok_or(Error::Invalid(
+            "sql: sequential transaction requires primary-key equality",
+        ))?;
+    match &key.value {
+        Cell::Text(k) if valid_id(k) => Ok(k.clone()),
+        _ => Err(Error::Invalid("sql: invalid transaction key")),
+    }
+}
+/// One atomic batch, sequential PK reads/writes and durable query observations.
+/// FK checks are deferred until final commit. No interactive session.
+pub fn execute_sequential(
+    db: &mut NativeLog,
+    statements: &[BoundStatement],
+    request: &str,
+) -> Result<SqlResult> {
+    if statements.is_empty() || statements.len() > 15 {
+        return Err(Error::Invalid("sql: sequential requires 1..15 statements"));
+    }
+    let parsed = statements
+        .iter()
+        .map(|b| parse_bound(&b.sql, &b.params))
+        .collect::<Result<Vec<_>>>()?;
+    if parsed.iter().any(|s| {
+        !matches!(
+            s,
+            Statement::Insert { .. }
+                | Statement::Update { .. }
+                | Statement::Delete { .. }
+                | Statement::Select { .. }
+        )
+    }) {
+        return Err(Error::Invalid(
+            "sql: sequential only supports PK SELECT and DML",
+        ));
+    }
+    let fingerprint = hash(
+        &serde_json::to_vec(&("sedravasql.sql-sequential.v1", &parsed))
+            .map_err(|_| Error::Invalid("sql: sequential fingerprint"))?,
+    );
+    if let Some(result) = replay_write(db, request, &fingerprint)? {
+        return Ok(result);
+    }
+    let t = Tables::new(db);
+    let mut overlay = BTreeMap::new();
+    let mut reads = Vec::new();
+    let mut writes = 0;
+    for stmt in parsed {
+        match stmt {
+            Statement::Insert {
+                table,
+                columns,
+                values,
+            } => {
+                let row: Row = columns.into_iter().zip(values).collect();
+                let schema = required_schema(&t, &table)?;
+                let key = schema.validate_row(&row)?;
+                let p = pending(&t, &mut overlay, &table, &key)?;
+                // Prior committed tombstones remain non-reinsertable, as in B16.
+                if p.row.is_some() || (!p.dirty && p.original_revision != 0) {
+                    return Err(Error::Conflict(
+                        "sql: sequential INSERT target already used".into(),
+                    ));
+                }
+                p.row = Some(row);
+                p.dirty = true;
+                writes += 1;
+            }
+            Statement::Update {
+                table,
+                assignments,
+                where_,
+            } => {
+                let schema = required_schema(&t, &table)?;
+                for (c, v) in &assignments {
+                    if c == &schema.primary_key || !type_ok(column(&schema, c)?, v) {
+                        return Err(Error::Invalid("sql: invalid SET column/type"));
+                    }
+                }
+                let key = transaction_key(&schema, &where_)?;
+                let p = pending(&t, &mut overlay, &table, &key)?;
+                let row = p
+                    .row
+                    .as_mut()
+                    .ok_or(Error::Conflict("sql: sequential UPDATE missing row".into()))?;
+                if !matches_row(row, &where_)? {
+                    return Err(Error::Conflict(
+                        "sql: sequential UPDATE predicate mismatch".into(),
+                    ));
+                }
+                row.extend(assignments);
+                schema.validate_row(row)?;
+                p.dirty = true;
+                writes += 1;
+            }
+            Statement::Delete { table, where_ } => {
+                let schema = required_schema(&t, &table)?;
+                let key = transaction_key(&schema, &where_)?;
+                let p = pending(&t, &mut overlay, &table, &key)?;
+                let row = p
+                    .row
+                    .as_ref()
+                    .ok_or(Error::Conflict("sql: sequential DELETE missing row".into()))?;
+                if !matches_row(row, &where_)? {
+                    return Err(Error::Conflict(
+                        "sql: sequential DELETE predicate mismatch".into(),
+                    ));
+                }
+                p.row = None;
+                p.dirty = true;
+                writes += 1;
+            }
+            Statement::Select {
+                table,
+                columns,
+                where_,
+                distinct,
+                order,
+                ..
+            } => {
+                let schema = required_schema(&t, &table)?;
+                let key = transaction_key(&schema, &where_)?;
+                let cols = if columns.is_empty() {
+                    schema.columns.iter().map(|c| c.name.clone()).collect()
+                } else {
+                    columns
+                };
+                for c in &cols {
+                    column(&schema, c)?;
+                }
+                if let Some((c, _)) = order {
+                    column(&schema, &c)?;
+                    if distinct && !cols.contains(&c) {
+                        return Err(Error::Invalid("sql: DISTINCT ORDER BY must be projected"));
+                    }
+                }
+                let p = pending(&t, &mut overlay, &table, &key)?;
+                let mut rows = vec![];
+                if let Some(row) = &p.row {
+                    if matches_row(row, &where_)? {
+                        rows.push(cols.iter().map(|c| row[c].clone()).collect());
+                    }
+                }
+                reads.push(SqlResult::Rows {
+                    columns: cols,
+                    rows,
+                });
+            }
+            _ => unreachable!(),
+        }
+    }
+    if writes == 0 {
+        return Err(Error::Invalid(
+            "sql: sequential transaction requires a write",
+        ));
+    }
+    let mut ops = vec![];
+    for ((table, key), p) in overlay {
+        if !p.dirty {
+            continue;
+        }
+        match p.row {
+            Some(row) => ops.push(t.prepare_mutation(&TableMutation::Put {
+                table,
+                expected_revision: p.original_revision,
+                row,
+            })?),
+            None if p.original_present => ops.push(t.prepare_mutation(&TableMutation::Delete {
+                table,
+                key,
+                expected_revision: p.original_revision,
+            })?),
+            None => {} // insert then delete has no durable row effect
+        }
+    }
+    commit_with_reads(db, request, fingerprint, ops, Some(reads))
 }
 
 #[derive(Debug, Serialize)]

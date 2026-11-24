@@ -216,3 +216,7 @@ No full accumulated-state clone per frame; prepare validated delta, publish only
 ### B21/B22 — immutable checked page image and disk search tree
 
 [SEDRPG01 format and limits](NATIVE_PAGES_B21_B22.ru.md). Writable paged storage and live SQL index integration pending.
+
+### B23 — sequential overlay and page generation refresh
+
+[Sequential SQL](NATIVE_SQL_B23.ru.md) and [copy-on-write page refresh](NATIVE_PAGE_REFRESH_B23.ru.md). In-place page mutation, live SQL page indexes, interactive transaction sessions remain pending.

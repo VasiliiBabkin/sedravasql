@@ -109,7 +109,7 @@ pub(crate) fn validate(snap: &Snapshot) -> Result<()> {
     }
     Ok(())
 }
-fn serialize_snapshot(snapshot: &Snapshot) -> Result<Vec<u8>> {
+pub(crate) fn serialize_snapshot(snapshot: &Snapshot) -> Result<Vec<u8>> {
     validate(snapshot)?;
     let payload = serde_json::to_vec(snapshot)
         .map_err(|_| Error::Invalid("snapshot: cannot encode state"))?;
@@ -187,6 +187,36 @@ pub fn verify_snapshot(path: &Path) -> Result<SnapshotReport> {
         ));
     }
     Ok(report(&snapshot, &bytes))
+}
+
+/// Canonical snapshot from an already verified exclusive log handle.
+pub(crate) fn from_log(log: &mut crate::NativeLog) -> Result<Snapshot> {
+    log.verify()?;
+    let at = log.file.stream_position()?;
+    let digest = file_sha256(&mut log.file);
+    log.file.seek(SeekFrom::Start(at))?;
+    let mut receipts = log
+        .state
+        .receipts
+        .iter()
+        .map(|(key, (fingerprint, result))| Receipt {
+            request_key: key.clone(),
+            fingerprint: fingerprint.clone(),
+            result: result.clone(),
+        })
+        .collect::<Vec<_>>();
+    receipts.sort_by(|a, b| a.request_key.cmp(&b.request_key));
+    let snap = Snapshot {
+        schema: SNAPSHOT_SCHEMA.into(),
+        log_sha256: digest?,
+        log_bytes: log.log_bytes,
+        sequence: log.state.seq,
+        chain_head_sha256: head_hex(&log.state.hash),
+        entries: log.state.entries.values().cloned().collect(),
+        receipts,
+    };
+    validate(&snap)?;
+    Ok(snap)
 }
 
 /// Materialize sorted entries + original receipt history from a COMPLETE,

@@ -507,3 +507,105 @@ pub fn create(source: &Path, dest: &Path, approved: &str) -> Result<PageReport> 
     File::open(dest.parent().ok_or_else(bad)?)?.sync_all()?;
     Ok(report)
 }
+
+/// Build a checked new image directly from one exclusive committed journal.
+pub fn build_from_log(log: &mut crate::NativeLog, dest: &Path) -> Result<PageReport> {
+    private_parent(dest)?;
+    let snapshot = crate::snapshot::from_log(log)?;
+    let canonical = crate::snapshot::serialize_snapshot(&snapshot)?;
+    let h = Header {
+        root: 0,
+        pages: 0,
+        height: 0,
+        rows: snapshot.entries.len() as u64,
+        sequence: snapshot.sequence,
+        snapshot_sha256: sha(&canonical),
+        log_sha256: snapshot.log_sha256,
+    };
+    let mut opts = OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut file = opts.open(dest)?;
+    make(&mut file, &snapshot.entries, h)?;
+    drop(file);
+    let report = PageReader::open(dest)?.report();
+    File::open(dest.parent().ok_or_else(bad)?)?.sync_all()?;
+    Ok(report)
+}
+/// Hash an exact committed prefix of an already verified journal. Never trust
+/// a sequence alone to bind an old page image to the current journal lineage.
+fn prefix_digest(log: &mut crate::NativeLog, seq: u64) -> Result<String> {
+    if seq > log.sequence() {
+        return Err(Error::Conflict("pages: future generation".into()));
+    }
+    let at = log.file.stream_position()?;
+    let result = (|| -> Result<String> {
+        log.file.seek(SeekFrom::Start(0))?;
+        let mut magic = [0; 8];
+        log.file.read_exact(&mut magic)?;
+        let mut hash = Sha256::new();
+        hash.update(magic);
+        for _ in 0..seq {
+            let mut len = [0; 4];
+            log.file.read_exact(&mut len)?;
+            let size = u32::from_be_bytes(len) as usize;
+            if size == 0 || size > crate::FRAME_LIMIT {
+                return Err(bad());
+            }
+            let mut data = vec![0; size + 32];
+            log.file.read_exact(&mut data)?;
+            hash.update(len);
+            hash.update(data);
+        }
+        Ok(format!("{:x}", hash.finalize()))
+    })();
+    log.file.seek(SeekFrom::Start(at))?;
+    result
+}
+/// Copy-on-write whole-generation refresh. The caller supplies an unused
+/// staging path in the same private directory and approves the old image hash.
+pub fn refresh(
+    log: &mut crate::NativeLog,
+    image: &Path,
+    staging: &Path,
+    approved_old: &str,
+) -> Result<PageReport> {
+    if !valid_hash(approved_old) || image == staging {
+        return Err(bad());
+    }
+    private_parent(image)?;
+    private_parent(staging)?;
+    if fs::canonicalize(image.parent().ok_or_else(bad)?)?
+        != fs::canonicalize(staging.parent().ok_or_else(bad)?)?
+    {
+        return Err(Error::Invalid("pages: staging must share image directory"));
+    }
+    log.verify()?;
+    let mut old = PageReader::open(image)?;
+    if file_sha256(&mut old.file)? != approved_old
+        || prefix_digest(log, old.h.sequence)? != old.h.log_sha256
+    {
+        return Err(Error::Conflict(
+            "pages: old image hash or journal lineage mismatch".into(),
+        ));
+    }
+    old.unchanged()?;
+    let report = build_from_log(log, staging)?;
+    let new = PageReader::open(staging)?;
+    if !new.matches_log(log)? {
+        return Err(Error::Conflict("pages: staged image not current".into()));
+    }
+    old.unchanged()?;
+    new.unchanged()?;
+    // The journal is authoritative. A crash before rename leaves the old
+    // image plus an orphan staging file; after rename the new image is valid.
+    crate::debug_fault("page_before_rename", &new.file);
+    fs::rename(staging, image)?;
+    crate::debug_fault("page_after_rename", &new.file);
+    File::open(image.parent().ok_or_else(bad)?)?.sync_all()?;
+    Ok(report)
+}
