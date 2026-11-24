@@ -703,10 +703,38 @@ fn matches_row(row: &Row, where_: &[Predicate]) -> Result<bool> {
     }
     Ok(true)
 }
+// Recognize a half-open primary-key range. Other conditions, including
+// non-ID text bounds, continue through the original scan path.
+fn primary_range<'a>(schema: &TableSchema, where_: &'a [Predicate]) -> Option<(&'a str, &'a str)> {
+    let find = |op: &str| {
+        let mut predicates = where_
+            .iter()
+            .filter(|p| p.column == schema.primary_key && p.op == op);
+        let first = predicates.next()?;
+        if predicates.next().is_some() {
+            return None;
+        }
+        match &first.value {
+            Cell::Text(k) if valid_id(k) => Some(k.as_str()),
+            _ => None,
+        }
+    };
+    Some((find(">=")?, find("<")?))
+}
+
 fn matching(
     t: &Tables<'_>,
     schema: &TableSchema,
     where_: &[Predicate],
+) -> Result<Vec<(String, u64, Row)>> {
+    matching_impl(t, schema, where_, false)
+}
+
+fn matching_impl(
+    t: &Tables<'_>,
+    schema: &TableSchema,
+    where_: &[Predicate],
+    allow_range: bool,
 ) -> Result<Vec<(String, u64, Row)>> {
     predicates(schema, where_)?;
     // Primary-key equality avoids scanning the rest of the table.
@@ -740,11 +768,24 @@ fn matching(
             return Ok(out);
         }
     }
+    let range = if allow_range {
+        primary_range(schema, where_)
+    } else {
+        None
+    };
+    if range.is_some_and(|(start, end)| start >= end) {
+        return Ok(vec![]);
+    }
     let mut after = None;
     let mut seen = 0;
     let mut out = Vec::new();
     loop {
-        let page = t.scan_with_schema(schema, after.as_deref(), 256)?;
+        let page = match range {
+            Some((start, end)) => {
+                t.scan_range_with_schema(schema, start, end, after.as_deref(), 256)?
+            }
+            None => t.scan_with_schema(schema, after.as_deref(), 256)?,
+        };
         if page.is_empty() {
             break;
         }
@@ -1010,7 +1051,7 @@ fn aggregate_query(
     if group.is_none() {
         groups.insert(GroupKey::All, vec![]);
     }
-    for (_, _, row) in matching(t, schema, where_)? {
+    for (_, _, row) in matching_impl(t, schema, where_, true)? {
         let k = group.map(|g| key(&row[g])).unwrap_or(GroupKey::All);
         groups.entry(k).or_default().push(row);
     }
@@ -1301,7 +1342,7 @@ pub fn execute_bound(
                 return Err(Error::Invalid("sql: DISTINCT ORDER BY must be projected"));
             }
         }
-        let mut rows = matching(&t, &schema, where_)?;
+        let mut rows = matching_impl(&t, &schema, where_, true)?;
         if let Some((c, desc)) = order {
             // All rows have already been validated against the same schema.
             rows.sort_by(|a, b| {
@@ -1864,6 +1905,9 @@ pub fn explain(db: &mut NativeLog, sql: &str, params: &[Cell]) -> Result<QueryPl
                 break;
             }
         }
+    }
+    if access == "bounded_table_scan" && primary_range(&schema, &where_).is_some() {
+        access = "primary_key_range";
     }
     Ok(QueryPlan {
         access,

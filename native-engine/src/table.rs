@@ -522,6 +522,21 @@ impl<'a> Tables<'a> {
     ) -> Result<Vec<TableRow>> {
         self.scan_with_hash(schema, &schema.hash()?, &schema.namespace(), after, limit)
     }
+    pub(crate) fn scan_range_with_schema(
+        &self,
+        schema: &TableSchema,
+        start: &str,
+        end: &str,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<TableRow>> {
+        let hash = schema.hash()?;
+        self.db
+            .scan_namespace_range(&schema.namespace(), start, end, after, limit)?
+            .into_iter()
+            .map(|r| Self::decode_with_hash(schema, &hash, r))
+            .collect()
+    }
     fn scan_with_hash(
         &self,
         schema: &TableSchema,

@@ -1,0 +1,18 @@
+{
+  "schema": "b28-ordered-manifest-v1",
+  "baseline": "075597a707cde19cb6ddc31360b2c98fd9c3c295",
+  "disk_tree_research": "d816ed31be8ee87226829000518529a15e18ef4b",
+  "binary_sha256": "ea7c9232a48b1f626e7f5f6cf6aac6c3cf4991fc3cdb8d0e20a71c3c030e5b73",
+  "source_sha256": {
+    "native-engine/src/lib.rs": "f7694aa67c42114a70bb48f822e17c5ceb722d2d86761eb64a3e4eadf2bc1b94",
+    "native-engine/src/sql.rs": "037b36663b410a84ce6275858c3b85f3f3cbc19ddd2f65f53b8afb4f8c268916",
+    "native-engine/src/table.rs": "d724b45bf0d4bac4740f50862739ebdb0729565faf2722d94565a6e0be391aed",
+    "native-engine/tests/sql_b28_ordered.rs": "b4a8f9213736ad9152de069080732e3ece1e54dbf48380785c371e02b4cf998c",
+    "native-engine/examples/b28_ordered.rs": "faf3bb60ca1d7a0292de3095eaca8b25c9c8b4a93b2f92e89dcf0435990daa15"
+  },
+  "raw_sha256": "15dfca90f7defee585cca2c4a622a0db81e0b93d626625301426c03827e89076",
+  "toolchain": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+  "loadavg_1m": 2.32,
+  "cpu_affinity": 0,
+  "decision": "accept ordered Replay range for read-only SELECT and aggregate; reject disk-tree as default"
+}

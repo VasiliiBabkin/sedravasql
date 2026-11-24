@@ -614,6 +614,46 @@ impl NativeLog {
             .map(|(_, r)| r.clone())
             .collect())
     }
+    /// B28-B: bounded primary-key range on one committed Replay.
+    /// Half-open [start,end), exclusive optional continuation; includes tombstones.
+    pub(crate) fn scan_namespace_range(
+        &self,
+        namespace: &str,
+        start: &str,
+        end: &str,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<NativeEntry>> {
+        use std::ops::Bound::{Excluded, Included};
+        if self.poisoned {
+            return Err(Error::Unsupported(
+                "native log: previous write uncertain".into(),
+            ));
+        }
+        if !valid_id(namespace)
+            || !valid_id(start)
+            || !valid_id(end)
+            || after.is_some_and(|k| !valid_id(k) || k < start || k >= end)
+            || !(1..=256).contains(&limit)
+        {
+            return Err(Error::Invalid("native log: invalid range bounds"));
+        }
+        if start >= end {
+            return Ok(vec![]);
+        }
+        let lower = match after {
+            Some(k) => Excluded((namespace.to_owned(), k.to_owned())),
+            None => Included((namespace.to_owned(), start.to_owned())),
+        };
+        let upper = Excluded((namespace.to_owned(), end.to_owned()));
+        Ok(self
+            .state
+            .entries
+            .range((lower, upper))
+            .take(limit)
+            .map(|(_, r)| r.clone())
+            .collect())
+    }
     /// Return the original durable engine receipt without re-executing a batch.
     pub fn lookup_receipt(&self, request_key: &str) -> Result<Option<NativeCommit>> {
         if self.poisoned {
