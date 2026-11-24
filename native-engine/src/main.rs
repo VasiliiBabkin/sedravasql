@@ -13,7 +13,7 @@ use sedravasql_native_engine::{NativeLimits, NativeLog, NativeMutation, Transact
 use std::{env, error::Error, fs, path::Path};
 
 fn usage() -> &'static str {
-    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | read-many FILE REQUESTS_JSON | receipt FILE REQUEST_KEY | batch FILE REQUEST_KEY JSON_FILE [MAX_BYTES MAX_TRANSACTIONS] | usage FILE [MAX_BYTES MAX_TRANSACTIONS] | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256 | sql FILE SQL [REQUEST_KEY] | sql-transaction FILE REQUEST_KEY STATEMENTS_JSON | sql-sequential FILE REQUEST_KEY STATEMENTS_JSON | explain FILE SQL [PARAMS_JSON] | sql-bind FILE SQL PARAMS_JSON [REQUEST_KEY] | table-batch FILE REQUEST_KEY CHANGES_JSON | table-create FILE REQUEST_KEY SCHEMA_JSON | table-schema FILE TABLE | table-put FILE REQUEST_KEY TABLE EXPECTED_REVISION ROW_JSON | table-delete FILE REQUEST_KEY TABLE KEY EXPECTED_REVISION | table-get FILE TABLE KEY | table-scan FILE TABLE LIMIT [AFTER] | archive-create SOURCE DEST EXPECTED_SHA256 | archive-verify ARCHIVE | archive-restore ARCHIVE DEST EXPECTED_SHA256 | backup-plan SOURCE | backup-copy SOURCE DEST EXPECTED_SHA256 | snapshot-create SOURCE DEST EXPECTED_SHA256 | snapshot-verify SNAPSHOT | restore-copy SNAPSHOT NEW_DEST APPROVED_SNAPSHOT_SHA256 | page-create SNAPSHOT NEW_IMAGE APPROVED_SHA256 | page-build-log LOG NEW_IMAGE | page-refresh LOG IMAGE STAGING APPROVED_OLD_SHA256 | page-verify IMAGE | page-get IMAGE NAMESPACE KEY | page-match-log IMAGE LOG | index-create SNAPSHOT NEW_INDEX APPROVED_SNAPSHOT_SHA256 | index-verify INDEX | index-get INDEX NAMESPACE KEY | index-get-many INDEX REQUESTS_JSON | index-range INDEX NAMESPACE START END LIMIT | index-page INDEX NAMESPACE START END LIMIT [CURSOR_JSON]>\n\
+    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | read-many FILE REQUESTS_JSON | receipt FILE REQUEST_KEY | batch FILE REQUEST_KEY JSON_FILE [MAX_BYTES MAX_TRANSACTIONS] | usage FILE [MAX_BYTES MAX_TRANSACTIONS] | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256 | sql FILE SQL [REQUEST_KEY] | sql-transaction FILE REQUEST_KEY STATEMENTS_JSON | sql-sequential FILE REQUEST_KEY STATEMENTS_JSON | explain FILE SQL [PARAMS_JSON] | sql-bind FILE SQL PARAMS_JSON [REQUEST_KEY] | table-batch FILE REQUEST_KEY CHANGES_JSON | table-create FILE REQUEST_KEY SCHEMA_JSON | table-schema FILE TABLE | table-put FILE REQUEST_KEY TABLE EXPECTED_REVISION ROW_JSON | table-delete FILE REQUEST_KEY TABLE KEY EXPECTED_REVISION | table-get FILE TABLE KEY | table-scan FILE TABLE LIMIT [AFTER] | archive-create SOURCE DEST EXPECTED_SHA256 | archive-verify ARCHIVE | archive-restore ARCHIVE DEST EXPECTED_SHA256 | backup-plan SOURCE | backup-copy SOURCE DEST EXPECTED_SHA256 | snapshot-create SOURCE DEST EXPECTED_SHA256 | snapshot-verify SNAPSHOT | restore-copy SNAPSHOT NEW_DEST APPROVED_SNAPSHOT_SHA256 | pager-init FILE SLOTS | pager-verify FILE | pager-get FILE NAMESPACE KEY | pager-commit FILE CHANGES_JSON | page-create SNAPSHOT NEW_IMAGE APPROVED_SHA256 | page-build-log LOG NEW_IMAGE | page-refresh LOG IMAGE STAGING APPROVED_OLD_SHA256 | page-verify IMAGE | page-get IMAGE NAMESPACE KEY | page-match-log IMAGE LOG | index-create SNAPSHOT NEW_INDEX APPROVED_SNAPSHOT_SHA256 | index-verify INDEX | index-get INDEX NAMESPACE KEY | index-get-many INDEX REQUESTS_JSON | index-range INDEX NAMESPACE START END LIMIT | index-page INDEX NAMESPACE START END LIMIT [CURSOR_JSON]>\n\
      EXPERIMENTAL / SINGLE WRITER / NO AUTOMATIC RECOVERY / NOT FOR VALUABLE DATA"
 }
 fn limits(args: &[String]) -> Result<NativeLimits, Box<dyn Error>> {
@@ -91,6 +91,24 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
                 "{}",
                 serde_json::json!({"matches":reader.matches_log(&mut log)?})
             );
+        }
+        [_, cmd, file, slots] if cmd == "pager-init" => {
+            let n = slots.parse::<u32>()?;
+            let db = sedravasql_native_engine::pager::Pager::create(Path::new(file), n)?;
+            println!("{}", serde_json::to_string(&db.report())?);
+        }
+        [_, cmd, file] if cmd == "pager-verify" => {
+            let db = sedravasql_native_engine::pager::Pager::open(Path::new(file))?;
+            println!("{}", serde_json::to_string(&db.report())?);
+        }
+        [_, cmd, file, ns, key] if cmd == "pager-get" => {
+            let mut db = sedravasql_native_engine::pager::Pager::open(Path::new(file))?;
+            println!("{}", serde_json::to_string(&db.get(ns, key)?)?);
+        }
+        [_, cmd, file, changes] if cmd == "pager-commit" => {
+            let changes: Vec<sedravasql_native_engine::pager::Change> = table_input(changes)?;
+            let mut db = sedravasql_native_engine::pager::Pager::open(Path::new(file))?;
+            println!("{}", serde_json::to_string(&db.commit(&changes)?)?);
         }
         [_, cmd, file] if cmd == "init" => {
             let mut db = NativeLog::create(Path::new(file))?;

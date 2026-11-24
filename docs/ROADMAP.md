@@ -220,3 +220,7 @@ No full accumulated-state clone per frame; prepare validated delta, publish only
 ### B23 — sequential overlay and page generation refresh
 
 [Sequential SQL](NATIVE_SQL_B23.ru.md) and [copy-on-write page refresh](NATIVE_PAGE_REFRESH_B23.ru.md). In-place page mutation, live SQL page indexes, interactive transaction sessions remain pending.
+
+### B24 — mutable fixed-slot pager and redo WAL
+
+[Separate experimental pager](NATIVE_MUTABLE_PAGER_B24.ru.md). Dynamic B+Tree and integration with native SQL still pending.

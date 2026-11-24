@@ -1,0 +1,1 @@
+{"stage":"B24","environment":"VDS Linux","native_rust_pass":62,"sqlite_rust_pass":21,"strict_clippy":"PASS","cli_regressions":"PASS","page_size":4096,"cache_pages":32,"controlled_process_exits":3,"recovery":"PASS","corrupt_wal_rejection":"PASS","changed_pages_two_rows":3,"hardware_power_loss":false,"dynamic_btree":false,"sql_integration":false,"production":false}

@@ -11,6 +11,7 @@
 pub mod archive;
 pub mod backup;
 pub mod index;
+pub mod pager;
 pub mod pages;
 pub mod recovery;
 pub mod restore;
