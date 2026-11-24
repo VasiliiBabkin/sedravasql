@@ -92,3 +92,7 @@ Experimental B5.2: 24 controlled NativeLog process exits
 at three debug-only write boundaries; torn frames rejected and
 synced receipts replayed. Not hardware power-loss validation.
 See docs/NATIVE_CRASH_B52.ru.md.
+
+B6 experimental [opt-in managed multi-key SQLite transaction](docs/MANAGED_BATCH_B6.ru.md):
+2–4 CAS writes, legacy per-row audit/receipts and one durable group response.
+Existing callers require no migration, and there is no production claim.

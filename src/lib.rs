@@ -3,6 +3,7 @@
 //! No claim of physical power-loss testing, encryption, distributed SQL or
 //! protection against a malicious process able to rewrite the same DB files.
 pub use sedravasql_native_engine as native_log;
+pub mod managed_batch;
 pub mod sqlite_batch;
 
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBehavior};
