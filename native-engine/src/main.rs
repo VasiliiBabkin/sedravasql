@@ -1,5 +1,6 @@
 //! Explicitly experimental CLI for the SQLite-free SedravaSQL append-log.
 //! NOT the existing stable or alpha SQLite CLI. Do not use for valuable data.
+use sedravasql_native_engine::archive::{create_archive, restore_archive, verify_archive};
 use sedravasql_native_engine::backup::{backup_to_new_file, plan_backup};
 use sedravasql_native_engine::index::{
     create_index, lookup_index, verify_index, RangeCursor, VerifiedIndexReader,
@@ -7,11 +8,12 @@ use sedravasql_native_engine::index::{
 use sedravasql_native_engine::recovery::{plan_recovery, recover_to_new_file};
 use sedravasql_native_engine::restore::restore_to_new_file;
 use sedravasql_native_engine::snapshot::{create_snapshot, verify_snapshot};
+use sedravasql_native_engine::table::{Row, TableMutation, TableSchema, Tables};
 use sedravasql_native_engine::{NativeLimits, NativeLog, NativeMutation, TransactionalStore};
 use std::{env, error::Error, fs, path::Path};
 
 fn usage() -> &'static str {
-    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | read-many FILE REQUESTS_JSON | receipt FILE REQUEST_KEY | batch FILE REQUEST_KEY JSON_FILE [MAX_BYTES MAX_TRANSACTIONS] | usage FILE [MAX_BYTES MAX_TRANSACTIONS] | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256 | backup-plan SOURCE | backup-copy SOURCE DEST EXPECTED_SHA256 | snapshot-create SOURCE DEST EXPECTED_SHA256 | snapshot-verify SNAPSHOT | restore-copy SNAPSHOT NEW_DEST APPROVED_SNAPSHOT_SHA256 | index-create SNAPSHOT NEW_INDEX APPROVED_SNAPSHOT_SHA256 | index-verify INDEX | index-get INDEX NAMESPACE KEY | index-get-many INDEX REQUESTS_JSON | index-range INDEX NAMESPACE START END LIMIT | index-page INDEX NAMESPACE START END LIMIT [CURSOR_JSON]>\n\
+    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | read-many FILE REQUESTS_JSON | receipt FILE REQUEST_KEY | batch FILE REQUEST_KEY JSON_FILE [MAX_BYTES MAX_TRANSACTIONS] | usage FILE [MAX_BYTES MAX_TRANSACTIONS] | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256 | table-batch FILE REQUEST_KEY CHANGES_JSON | table-create FILE REQUEST_KEY SCHEMA_JSON | table-schema FILE TABLE | table-put FILE REQUEST_KEY TABLE EXPECTED_REVISION ROW_JSON | table-delete FILE REQUEST_KEY TABLE KEY EXPECTED_REVISION | table-get FILE TABLE KEY | table-scan FILE TABLE LIMIT [AFTER] | archive-create SOURCE DEST EXPECTED_SHA256 | archive-verify ARCHIVE | archive-restore ARCHIVE DEST EXPECTED_SHA256 | backup-plan SOURCE | backup-copy SOURCE DEST EXPECTED_SHA256 | snapshot-create SOURCE DEST EXPECTED_SHA256 | snapshot-verify SNAPSHOT | restore-copy SNAPSHOT NEW_DEST APPROVED_SNAPSHOT_SHA256 | index-create SNAPSHOT NEW_INDEX APPROVED_SNAPSHOT_SHA256 | index-verify INDEX | index-get INDEX NAMESPACE KEY | index-get-many INDEX REQUESTS_JSON | index-range INDEX NAMESPACE START END LIMIT | index-page INDEX NAMESPACE START END LIMIT [CURSOR_JSON]>\n\
      EXPERIMENTAL / SINGLE WRITER / NO AUTOMATIC RECOVERY / NOT FOR VALUABLE DATA"
 }
 fn limits(args: &[String]) -> Result<NativeLimits, Box<dyn Error>> {
@@ -24,6 +26,13 @@ fn limits(args: &[String]) -> Result<NativeLimits, Box<dyn Error>> {
         .validate()?),
         _ => Err("expected both MAX_BYTES MAX_TRANSACTIONS".into()),
     }
+}
+fn table_input<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, Box<dyn Error>> {
+    let m = fs::symlink_metadata(path)?;
+    if !m.is_file() || m.file_type().is_symlink() || m.len() > 65536 {
+        return Err("table: invalid JSON input file".into());
+    }
+    Ok(serde_json::from_slice(&fs::read(path)?)?)
 }
 fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
     match args {
@@ -39,6 +48,99 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
         [_, cmd, source, destination, digest] if cmd == "recovery-copy" => {
             let plan = recover_to_new_file(Path::new(source), Path::new(destination), digest)?;
             println!("{}", serde_json::to_string(&plan)?);
+        }
+        [_, cmd, file, request, input] if cmd == "table-batch" => {
+            let changes: Vec<TableMutation> = table_input(input)?;
+            let mut db = NativeLog::open(Path::new(file))?;
+            println!(
+                "{}",
+                serde_json::to_string(&Tables::new(&mut db).batch(request, &changes)?)?
+            );
+        }
+        [_, cmd, file, request, input] if cmd == "table-create" => {
+            let schema: TableSchema = table_input(input)?;
+            let mut db = NativeLog::open(Path::new(file))?;
+            println!(
+                "{}",
+                serde_json::to_string(&Tables::new(&mut db).create(request, &schema)?)?
+            );
+        }
+        [_, cmd, file, table] if cmd == "table-schema" => {
+            let mut db = NativeLog::open(Path::new(file))?;
+            println!(
+                "{}",
+                serde_json::to_string(&Tables::new(&mut db).schema(table)?)?
+            );
+        }
+        [_, cmd, file, request, table, rev, input] if cmd == "table-put" => {
+            let row: Row = table_input(input)?;
+            let mut db = NativeLog::open(Path::new(file))?;
+            println!(
+                "{}",
+                serde_json::to_string(&Tables::new(&mut db).put(
+                    request,
+                    table,
+                    rev.parse()?,
+                    row
+                )?)?
+            );
+        }
+        [_, cmd, file, request, table, key, rev] if cmd == "table-delete" => {
+            let mut db = NativeLog::open(Path::new(file))?;
+            println!(
+                "{}",
+                serde_json::to_string(&Tables::new(&mut db).delete(
+                    request,
+                    table,
+                    key,
+                    rev.parse()?
+                )?)?
+            );
+        }
+        [_, cmd, file, table, key] if cmd == "table-get" => {
+            let mut db = NativeLog::open(Path::new(file))?;
+            println!(
+                "{}",
+                serde_json::to_string(&Tables::new(&mut db).get(table, key)?)?
+            );
+        }
+        [_, cmd, file, table, limit, rest @ ..] if cmd == "table-scan" => {
+            let after = match rest {
+                [] => None,
+                [s] => Some(s.as_str()),
+                _ => return Err("table: expected optional after key".into()),
+            };
+            let mut db = NativeLog::open(Path::new(file))?;
+            println!(
+                "{}",
+                serde_json::to_string(&Tables::new(&mut db).scan(table, after, limit.parse()?)?)?
+            );
+        }
+        [_, cmd, source, dest, digest] if cmd == "archive-create" => {
+            println!(
+                "{}",
+                serde_json::to_string(&create_archive(
+                    Path::new(source),
+                    Path::new(dest),
+                    digest
+                )?)?
+            );
+        }
+        [_, cmd, file] if cmd == "archive-verify" => {
+            println!(
+                "{}",
+                serde_json::to_string(&verify_archive(Path::new(file))?)?
+            );
+        }
+        [_, cmd, source, dest, digest] if cmd == "archive-restore" => {
+            println!(
+                "{}",
+                serde_json::to_string(&restore_archive(
+                    Path::new(source),
+                    Path::new(dest),
+                    digest
+                )?)?
+            );
         }
         [_, cmd, file] if cmd == "backup-plan" => {
             let plan = plan_backup(Path::new(file))?;

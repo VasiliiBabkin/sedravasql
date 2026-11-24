@@ -124,3 +124,5 @@ Not a live writable journal index; docs/NATIVE_INDEX_B9.ru.md.
 **Native B14 (experimental):** [staged replay without full state cloning](docs/NATIVE_REPLAY_B14.ru.md).
 
 **Native B15a (experimental):** [journal write budgets](docs/NATIVE_BUDGET_B15A.ru.md).
+
+Experimental [B15b archives](docs/NATIVE_ARCHIVE_B15B.ru.md) and [B16a typed tables](docs/NATIVE_TABLE_B16A.ru.md).

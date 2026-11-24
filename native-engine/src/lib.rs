@@ -8,11 +8,13 @@
 //! are opt-in experiments, not production recovery.
 //! A stale .lock after a crash must be handled by an operator.
 //! Do not store irreplaceable data here.
+pub mod archive;
 pub mod backup;
 pub mod index;
 pub mod recovery;
 pub mod restore;
 pub mod snapshot;
+pub mod table;
 
 use std::error::Error as StdError;
 use std::fmt;
@@ -297,6 +299,9 @@ fn fail_corrupt(reason: &'static str) -> Error {
 }
 
 fn load(file: &mut File) -> Result<Replay> {
+    load_reader(file)
+}
+fn load_reader(file: &mut (impl Read + Seek)) -> Result<Replay> {
     file.seek(SeekFrom::Start(0))?;
     let mut magic = [0u8; 8];
     file.read_exact(&mut magic)
@@ -568,6 +573,38 @@ impl NativeLog {
             sequence: self.state.seq,
             rows,
         })
+    }
+    /// B16a: bounded ordered scan on a single exclusive committed generation.
+    pub fn scan_namespace(
+        &self,
+        namespace: &str,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<NativeEntry>> {
+        use std::ops::Bound::{Excluded, Included, Unbounded};
+        if self.poisoned {
+            return Err(Error::Unsupported(
+                "native log: previous write uncertain".into(),
+            ));
+        }
+        if !valid_id(namespace)
+            || after.is_some_and(|k| !valid_id(k))
+            || !(1..=256).contains(&limit)
+        {
+            return Err(Error::Invalid("native log: invalid scan bounds"));
+        }
+        let start = match after {
+            Some(k) => Excluded((namespace.to_owned(), k.to_owned())),
+            None => Included((namespace.to_owned(), String::new())),
+        };
+        Ok(self
+            .state
+            .entries
+            .range((start, Unbounded))
+            .take_while(|((ns, _), _)| ns == namespace)
+            .take(limit)
+            .map(|(_, r)| r.clone())
+            .collect())
     }
     /// Return the original durable engine receipt without re-executing a batch.
     pub fn lookup_receipt(&self, request_key: &str) -> Result<Option<NativeCommit>> {

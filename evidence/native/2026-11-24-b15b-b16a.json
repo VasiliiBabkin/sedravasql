@@ -1,0 +1,1 @@
+{"stage":"B15b/B16a","environment":"VDS Linux","native_rust_pass":46,"sqlite_rust_pass":21,"strict_clippy":"PASS","existing_cli_regressions":"PASS","archive_table_cli":"PASS","source_bytes":89419,"archive_bytes":3107,"online_compaction":false,"sql_parser":false,"production":false}

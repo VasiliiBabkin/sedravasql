@@ -184,3 +184,11 @@ No full accumulated-state clone per frame; prepare validated delta, publish only
 ### Native B15a: bounded write admission
 
 [Byte and transaction ceilings](NATIVE_BUDGET_B15A.ru.md), exact frame accounting, historical replay at capacity. B15b checkpoint/compaction pending.
+
+### B15b: compressed offline journal archive
+
+[SEDRARC1 exact restoration](NATIVE_ARCHIVE_B15B.ru.md), all receipts preserved; active compaction remains pending.
+
+### B16a: typed table API
+
+[Immutable schema and primary key CRUD / atomic multi-table batches](NATIVE_TABLE_B16A.ru.md). SQL grammar/executor and online compaction remain pending.
