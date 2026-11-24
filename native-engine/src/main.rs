@@ -7,12 +7,23 @@ use sedravasql_native_engine::index::{
 use sedravasql_native_engine::recovery::{plan_recovery, recover_to_new_file};
 use sedravasql_native_engine::restore::restore_to_new_file;
 use sedravasql_native_engine::snapshot::{create_snapshot, verify_snapshot};
-use sedravasql_native_engine::{NativeLog, NativeMutation, TransactionalStore};
+use sedravasql_native_engine::{NativeLimits, NativeLog, NativeMutation, TransactionalStore};
 use std::{env, error::Error, fs, path::Path};
 
 fn usage() -> &'static str {
-    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | read-many FILE REQUESTS_JSON | receipt FILE REQUEST_KEY | batch FILE REQUEST_KEY JSON_FILE | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256 | backup-plan SOURCE | backup-copy SOURCE DEST EXPECTED_SHA256 | snapshot-create SOURCE DEST EXPECTED_SHA256 | snapshot-verify SNAPSHOT | restore-copy SNAPSHOT NEW_DEST APPROVED_SNAPSHOT_SHA256 | index-create SNAPSHOT NEW_INDEX APPROVED_SNAPSHOT_SHA256 | index-verify INDEX | index-get INDEX NAMESPACE KEY | index-get-many INDEX REQUESTS_JSON | index-range INDEX NAMESPACE START END LIMIT | index-page INDEX NAMESPACE START END LIMIT [CURSOR_JSON]>\n\
+    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | read-many FILE REQUESTS_JSON | receipt FILE REQUEST_KEY | batch FILE REQUEST_KEY JSON_FILE [MAX_BYTES MAX_TRANSACTIONS] | usage FILE [MAX_BYTES MAX_TRANSACTIONS] | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256 | backup-plan SOURCE | backup-copy SOURCE DEST EXPECTED_SHA256 | snapshot-create SOURCE DEST EXPECTED_SHA256 | snapshot-verify SNAPSHOT | restore-copy SNAPSHOT NEW_DEST APPROVED_SNAPSHOT_SHA256 | index-create SNAPSHOT NEW_INDEX APPROVED_SNAPSHOT_SHA256 | index-verify INDEX | index-get INDEX NAMESPACE KEY | index-get-many INDEX REQUESTS_JSON | index-range INDEX NAMESPACE START END LIMIT | index-page INDEX NAMESPACE START END LIMIT [CURSOR_JSON]>\n\
      EXPERIMENTAL / SINGLE WRITER / NO AUTOMATIC RECOVERY / NOT FOR VALUABLE DATA"
+}
+fn limits(args: &[String]) -> Result<NativeLimits, Box<dyn Error>> {
+    match args {
+        [] => Ok(NativeLimits::default()),
+        [bytes, tx] => Ok(NativeLimits {
+            max_bytes: bytes.parse()?,
+            max_transactions: tx.parse()?,
+        }
+        .validate()?),
+        _ => Err("expected both MAX_BYTES MAX_TRANSACTIONS".into()),
+    }
 }
 fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
     match args {
@@ -170,7 +181,12 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
             let db = NativeLog::open(Path::new(file))?;
             println!("{}", serde_json::to_string(&db.read(ns, key)?)?);
         }
-        [_, cmd, file, request, input] if cmd == "batch" => {
+        [_, cmd, file, rest @ ..] if cmd == "usage" => {
+            let mut db = NativeLog::open(Path::new(file))?;
+            db.set_limits(limits(rest)?)?;
+            println!("{}", serde_json::to_string(&db.usage()?)?);
+        }
+        [_, cmd, file, request, input, rest @ ..] if cmd == "batch" => {
             let json = Path::new(input);
             let meta = fs::metadata(json)?;
             if !meta.is_file() || meta.len() > 1_100_000 {
@@ -178,6 +194,7 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
             }
             let operations: Vec<NativeMutation> = serde_json::from_slice(&fs::read(json)?)?;
             let mut db = NativeLog::open(Path::new(file))?;
+            db.set_limits(limits(rest)?)?;
             let result = db.commit_batch(request, &operations)?;
             println!("{}", serde_json::to_string(&result)?);
         }

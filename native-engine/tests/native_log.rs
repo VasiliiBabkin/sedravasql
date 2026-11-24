@@ -400,3 +400,66 @@ fn b14_large_legacy_journal_replay_receipts_and_atomic_rejection() {
     );
     db.verify().unwrap();
 }
+
+#[test]
+fn b15_limits_exact_frame_boundary_replay_and_reopen() {
+    use sedravasql_native_engine::{Error, NativeLimits};
+    let dir = private_tempdir();
+    let a = dir.path().join("probe.log");
+    let b = dir.path().join("limited.log");
+    let ops = [put("n", "a", 0, "hello"), put("n", "b", 0, "world")];
+    let key = "b15-request-0001";
+    let mut probe = NativeLog::create(&a).unwrap();
+    let receipt = probe.commit_batch(key, &ops).unwrap();
+    let size = probe.usage().unwrap().log_bytes;
+    drop(probe);
+    let mut db = NativeLog::create(&b).unwrap();
+    db.set_limits(NativeLimits {
+        max_bytes: size - 1,
+        max_transactions: 10,
+    })
+    .unwrap();
+    assert!(matches!(
+        db.commit_batch(key, &ops),
+        Err(Error::Capacity(_))
+    ));
+    assert_eq!(db.usage().unwrap().log_bytes, 8);
+    assert!(db.read("n", "a").unwrap().is_none());
+    db.set_limits(NativeLimits {
+        max_bytes: size,
+        max_transactions: 10,
+    })
+    .unwrap();
+    assert_eq!(db.commit_batch(key, &ops).unwrap(), receipt);
+    assert_eq!(db.usage().unwrap().remaining_bytes, 0);
+    let original = std::fs::read(&b).unwrap();
+    assert!(db.commit_batch(key, &ops).unwrap().replayed);
+    assert!(matches!(
+        db.commit_batch("b15-request-0002", &[put("n", "a", 1, "new")]),
+        Err(Error::Capacity(_))
+    ));
+    assert_eq!(std::fs::read(&b).unwrap(), original);
+    drop(db);
+    let mut db = NativeLog::open(&b).unwrap();
+    db.set_limits(NativeLimits {
+        max_bytes: 8,
+        max_transactions: 1,
+    })
+    .unwrap();
+    assert_eq!(db.usage().unwrap().remaining_transactions, 0);
+    assert!(db.commit_batch(key, &ops).unwrap().replayed);
+    assert!(matches!(
+        db.commit_batch("b15-request-0002", &[put("n", "a", 1, "new")]),
+        Err(Error::Capacity("native log: transaction ceiling"))
+    ));
+    assert!(db.lookup_receipt("b15-request-0002").unwrap().is_none());
+    assert!(db
+        .set_limits(NativeLimits {
+            max_bytes: 7,
+            max_transactions: 1
+        })
+        .is_err());
+    assert_eq!(db.usage().unwrap().limits.max_bytes, 8);
+    db.verify().unwrap();
+    assert_eq!(std::fs::read(&b).unwrap(), original);
+}

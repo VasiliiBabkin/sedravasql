@@ -23,6 +23,7 @@ pub const MAX_VALUE_BYTES: usize = 65_536;
 #[derive(Debug)]
 pub enum Error {
     Invalid(&'static str),
+    Capacity(&'static str),
     Conflict(String),
     Unsupported(String),
     Io(std::io::Error),
@@ -31,6 +32,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Invalid(s) => write!(f, "INVALID_ARGUMENT: {s}"),
+            Self::Capacity(s) => write!(f, "CAPACITY_EXCEEDED: {s}"),
             Self::Conflict(s) => write!(f, "CONFLICT: {s}"),
             Self::Unsupported(s) => write!(f, "UNSUPPORTED: {s}"),
             Self::Io(s) => write!(f, "IO_ERROR: {s}"),
@@ -91,6 +93,44 @@ pub struct NativeReadSnapshot {
     pub rows: Vec<Option<NativeEntry>>,
 }
 
+/// B15a: write-admission ceilings, not a memory or filesystem quota.
+pub const MAX_LOG_BYTES: u64 = 64 * 1024 * 1024;
+pub const MAX_LOG_TRANSACTIONS: u64 = 65_536;
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct NativeLimits {
+    pub max_bytes: u64,
+    pub max_transactions: u64,
+}
+impl Default for NativeLimits {
+    fn default() -> Self {
+        Self {
+            max_bytes: MAX_LOG_BYTES,
+            max_transactions: MAX_LOG_TRANSACTIONS,
+        }
+    }
+}
+impl NativeLimits {
+    pub fn validate(self) -> Result<Self> {
+        if !(8..=MAX_LOG_BYTES).contains(&self.max_bytes)
+            || !(1..=MAX_LOG_TRANSACTIONS).contains(&self.max_transactions)
+        {
+            return Err(Error::Invalid("native log: invalid write limits"));
+        }
+        Ok(self)
+    }
+}
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct NativeUsage {
+    pub log_bytes: u64,
+    pub transactions: u64,
+    pub keys_including_tombstones: usize,
+    pub receipts: usize,
+    pub limits: NativeLimits,
+    pub remaining_bytes: u64,
+    pub remaining_transactions: u64,
+}
 /// Minimal backend-neutral *target* API, not yet implemented by SQLite.
 /// This interface is unstable and not exposed through Sedrava DSL.
 pub trait TransactionalStore {
@@ -402,6 +442,8 @@ pub struct NativeLog {
     _lock: ExclusiveLock,
     state: Replay,
     poisoned: bool,
+    log_bytes: u64,
+    limits: NativeLimits,
 }
 impl NativeLog {
     pub fn create(path: &Path) -> Result<Self> {
@@ -434,11 +476,14 @@ impl NativeLog {
         .sync_all()?;
         private_file(path)?;
         let state = load(&mut file)?;
+        let log_bytes = file.stream_position()?;
         Ok(Self {
             file,
             _lock: lock,
             state,
             poisoned: false,
+            log_bytes,
+            limits: NativeLimits::default(),
         })
     }
     pub fn open(path: &Path) -> Result<Self> {
@@ -451,11 +496,14 @@ impl NativeLog {
         let lock = ExclusiveLock::acquire(path)?;
         let mut file = OpenOptions::new().read(true).write(true).open(path)?;
         let state = load(&mut file)?;
+        let log_bytes = file.stream_position()?;
         Ok(Self {
             file,
             _lock: lock,
             state,
             poisoned: false,
+            log_bytes,
+            limits: NativeLimits::default(),
         })
     }
     pub fn verify(&mut self) -> Result<()> {
@@ -471,11 +519,36 @@ impl NativeLog {
                 return Err(error);
             }
         };
-        if from_disk.seq != self.state.seq || from_disk.hash != self.state.hash {
+        if from_disk.seq != self.state.seq
+            || from_disk.hash != self.state.hash
+            || self.file.stream_position()? != self.log_bytes
+        {
             self.poisoned = true;
             return Err(fail_corrupt("in-memory and disk state diverged"));
         }
         Ok(())
+    }
+    /// Limits are per handle; operators must reapply custom limits on reopen.
+    /// Historical data remains readable/replayable even above a lower ceiling.
+    pub fn set_limits(&mut self, limits: NativeLimits) -> Result<()> {
+        self.limits = limits.validate()?;
+        Ok(())
+    }
+    pub fn usage(&self) -> Result<NativeUsage> {
+        if self.poisoned {
+            return Err(Error::Unsupported(
+                "native log: previous write uncertain".into(),
+            ));
+        }
+        Ok(NativeUsage {
+            log_bytes: self.log_bytes,
+            transactions: self.state.seq,
+            keys_including_tombstones: self.state.entries.len(),
+            receipts: self.state.receipts.len(),
+            limits: self.limits,
+            remaining_bytes: self.limits.max_bytes.saturating_sub(self.log_bytes),
+            remaining_transactions: self.limits.max_transactions.saturating_sub(self.state.seq),
+        })
     }
     /// Read 1..16 addresses in input order from one committed Replay.
     /// Duplicates are preserved, missing rows are None, tombstones are rows.
@@ -561,6 +634,24 @@ impl TransactionalStore for NativeLog {
         if payload.is_empty() || payload.len() > FRAME_LIMIT {
             return Err(Error::Invalid("native log: oversized frame"));
         }
+        // Exact encoded frame size, including 4-byte length and 32-byte digest.
+        // Replays are handled above, even when the journal is at capacity.
+        let projected = self
+            .log_bytes
+            .checked_add(payload.len() as u64 + 36)
+            .ok_or(Error::Capacity("native log: byte counter overflow"))?;
+        if pending.result.sequence > self.limits.max_transactions {
+            return Err(Error::Capacity("native log: transaction ceiling"));
+        }
+        if projected > self.limits.max_bytes {
+            return Err(Error::Capacity("native log: byte ceiling"));
+        }
+        if self.file.metadata()?.len() != self.log_bytes {
+            self.poisoned = true;
+            return Err(fail_corrupt(
+                "journal length changed outside exclusive owner",
+            ));
+        }
         let len = (payload.len() as u32).to_be_bytes();
         let checksum = frame_digest(&self.state.hash, &len, &payload);
         // A complete frame is the atomic recovery unit; never update memory
@@ -581,6 +672,7 @@ impl TransactionalStore for NativeLog {
         }
         let result = pending.result.clone();
         apply(&mut self.state, pending, checksum);
+        self.log_bytes = projected;
         Ok(result)
     }
 }

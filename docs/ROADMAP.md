@@ -180,3 +180,7 @@ Coherent 1..16 key reads and historical receipts on one exclusive native journal
 ### Native B14: staged replay and commit
 
 No full accumulated-state clone per frame; prepare validated delta, publish only after sync or verified replay. Existing format and durable receipts preserved. [Protocol](NATIVE_REPLAY_B14.ru.md). Compaction and resource budgets remain pending.
+
+### Native B15a: bounded write admission
+
+[Byte and transaction ceilings](NATIVE_BUDGET_B15A.ru.md), exact frame accounting, historical replay at capacity. B15b checkpoint/compaction pending.
