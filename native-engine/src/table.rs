@@ -28,12 +28,52 @@ pub struct TableSchema {
     pub primary_key: String,
     pub columns: Vec<Column>,
 }
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(untagged)]
 pub enum Cell {
     Int(i32),
     Bool(bool),
     Text(String),
+}
+
+// B27: dispatch directly on the scalar kind rather than buffering an
+// untagged enum and attempting each variant. The JSON representation stays
+// unchanged; only i32 integers, booleans and strings are accepted.
+impl<'de> Deserialize<'de> for Cell {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        struct Scalar;
+        impl<'de> serde::de::Visitor<'de> for Scalar {
+            type Value = Cell;
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a signed 32-bit integer, boolean or string")
+            }
+            fn visit_i64<E: serde::de::Error>(self, value: i64) -> std::result::Result<Cell, E> {
+                i32::try_from(value)
+                    .map(Cell::Int)
+                    .map_err(|_| E::custom("integer outside i32"))
+            }
+            fn visit_u64<E: serde::de::Error>(self, value: u64) -> std::result::Result<Cell, E> {
+                i32::try_from(value)
+                    .map(Cell::Int)
+                    .map_err(|_| E::custom("integer outside i32"))
+            }
+            fn visit_bool<E: serde::de::Error>(self, value: bool) -> std::result::Result<Cell, E> {
+                Ok(Cell::Bool(value))
+            }
+            fn visit_str<E: serde::de::Error>(self, value: &str) -> std::result::Result<Cell, E> {
+                Ok(Cell::Text(value.to_owned()))
+            }
+            fn visit_string<E: serde::de::Error>(
+                self,
+                value: String,
+            ) -> std::result::Result<Cell, E> {
+                Ok(Cell::Text(value))
+            }
+        }
+        deserializer.deserialize_any(Scalar)
+    }
 }
 pub type Row = BTreeMap<String, Cell>;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

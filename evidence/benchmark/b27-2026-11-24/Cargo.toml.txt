@@ -1,0 +1,8 @@
+[package]
+name = "sedrava-bench-db"
+version = "0.1.0"
+edition = "2021"
+[dependencies]
+sedravasql-native-engine = { path = "../../sedravasql/native-engine" }
+rusqlite = { version = "0.32.1", features=["bundled","backup"] }
+serde_json = "1.0"

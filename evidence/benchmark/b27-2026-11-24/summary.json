@@ -1,0 +1,341 @@
+{
+  "schema": "sedravasql-b27-json-decode-benchmark-v1",
+  "baseline_source": "b1520775cb1a7977c8535889b16646a559104b33",
+  "candidate_files": {
+    "native-engine/src/table.rs": "033556c4ad32a9cb9b9f7aaf418bf6d44eee5ce6c559007935f7cdbdf9e643f5",
+    "native-engine/tests/sql_b27.rs": "159408632b76757c153704bab6cad66bd9973484bbe774a3bb58a235a349f3c8"
+  },
+  "binary_sha256": {
+    "baseline": "0d97e291015c4699744e99bb0bbf50d0ad35895a15ea545424be4b1f66d0a865",
+    "rejected-cache": "e4bb1a4133d285a439f1515ad6e1b86d16a78e4a0d638d0326c0394bd519324c",
+    "candidate": "fb00d08e25fdd99e0f9dea6979eabe114c28bbd2e0af71a385860eadcf24ef42"
+  },
+  "file_sha256": {
+    "Cargo.lock.txt": "b82b825fbc908407ac882c961b5768b9ed95a338dfd180997538b65a90ccbebb",
+    "Cargo.toml.txt": "7d103e9743b65dc74ef2f2b58b55267c2ee7f1aa2fe45ed3d1ce2f46fa6e1505",
+    "cache-baseline-1.json": "777f34eea3f0fcbf7bd50f35efdecccf0e5ea2d319e9077ef74487626368603d",
+    "cache-baseline-2.json": "e9ae4b3a2e287dff8ff54599ccc7c9815612f863d9ffd8c92744a9a9d153c937",
+    "cache-candidate-1.json": "e5a0a23c8b48507fff0118552533bee7c3c1f0f54bc6d6cfe646d58122cf0c7f",
+    "cache-candidate-2.json": "38175e1fe5160734669530819b8bebb442635951c1c22142aeb4474a892b9b32",
+    "dbbench.rs": "16054b8948af5a774649d9e5a45e3d1d9456b3dada679276c015d178323c62db",
+    "measure.c": "a3e074c99ea7371eca5a5b721818c3df56a49b9c835a6c9e9523c72bc8f4b9a5",
+    "visitor-baseline-1.json": "66d6309dac0f900fb3204ae19aed34252ac4d63a6cd4fc1824e3d0157ae292f9",
+    "visitor-baseline-2.json": "4a31841ee952be282a2d079a6db04c242cd357832249fbd7d13237b99bf5c133",
+    "visitor-candidate-1.json": "216ec73c75fef06dd47afa5a74926ba84666d099263be2d8fcf8089846d4c6f1",
+    "visitor-candidate-2.json": "3d54e033a3c714639ec56414dc178166bb2d9c0a397cb888f84803627afcb929"
+  },
+  "run_order_each": [
+    "baseline-1",
+    "candidate-1",
+    "candidate-2",
+    "baseline-2"
+  ],
+  "cpu_affinity": 0,
+  "rows_per_db": 300,
+  "databases_per_variant_per_experiment": 6,
+  "toolchain": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+  "sqlite_version": "3.46.0",
+  "experiments": {
+    "cache": {
+      "loadavg_1m_before_runs": [
+        3.57,
+        3.45,
+        3.57,
+        3.6
+      ],
+      "metrics": {
+        "baseline": {
+          "memory": [
+            {
+              "wall_ms": 3980.467764,
+              "max_rss_kib": 6784,
+              "cpu_ms": 1758.528
+            },
+            {
+              "wall_ms": 4193.39355,
+              "max_rss_kib": 6784,
+              "cpu_ms": 1815.592
+            }
+          ],
+          "native": {
+            "insert": {
+              "n": 1200,
+              "median_ms": 1.1818465,
+              "p95_ms": 2.490113
+            },
+            "pk": {
+              "n": 1800,
+              "median_ms": 0.023275999999999998,
+              "p95_ms": 0.036714000000000004
+            },
+            "category": {
+              "n": 900,
+              "median_ms": 0.372787,
+              "p95_ms": 0.592528
+            },
+            "aggregate": {
+              "n": 900,
+              "median_ms": 0.311564,
+              "p95_ms": 0.47605899999999995
+            },
+            "scan": {
+              "n": 600,
+              "median_ms": 2.432025,
+              "p95_ms": 3.9536520000000004
+            }
+          },
+          "sqlite": {
+            "insert": {
+              "n": 1200,
+              "median_ms": 1.259444,
+              "p95_ms": 2.958624
+            },
+            "pk": {
+              "n": 1800,
+              "median_ms": 0.016249,
+              "p95_ms": 0.029733000000000002
+            },
+            "category": {
+              "n": 900,
+              "median_ms": 0.130765,
+              "p95_ms": 0.225596
+            },
+            "aggregate": {
+              "n": 900,
+              "median_ms": 0.0474495,
+              "p95_ms": 0.098516
+            },
+            "scan": {
+              "n": 600,
+              "median_ms": 0.13385249999999999,
+              "p95_ms": 0.26148000000000005
+            }
+          }
+        },
+        "candidate": {
+          "memory": [
+            {
+              "wall_ms": 6835.767944,
+              "max_rss_kib": 6784,
+              "cpu_ms": 1838.005
+            },
+            {
+              "wall_ms": 4957.376612,
+              "max_rss_kib": 6912,
+              "cpu_ms": 1742.204
+            }
+          ],
+          "native": {
+            "insert": {
+              "n": 1200,
+              "median_ms": 1.356082,
+              "p95_ms": 4.831942
+            },
+            "pk": {
+              "n": 1800,
+              "median_ms": 0.0253725,
+              "p95_ms": 0.046452
+            },
+            "category": {
+              "n": 900,
+              "median_ms": 0.3407255,
+              "p95_ms": 2.3820230000000002
+            },
+            "aggregate": {
+              "n": 900,
+              "median_ms": 0.32268949999999996,
+              "p95_ms": 2.466742
+            },
+            "scan": {
+              "n": 600,
+              "median_ms": 3.65756,
+              "p95_ms": 8.281687
+            }
+          },
+          "sqlite": {
+            "insert": {
+              "n": 1200,
+              "median_ms": 1.4716455,
+              "p95_ms": 4.807976
+            },
+            "pk": {
+              "n": 1800,
+              "median_ms": 0.016385999999999998,
+              "p95_ms": 0.034156000000000006
+            },
+            "category": {
+              "n": 900,
+              "median_ms": 0.149227,
+              "p95_ms": 0.311458
+            },
+            "aggregate": {
+              "n": 900,
+              "median_ms": 0.06107449999999999,
+              "p95_ms": 0.183525
+            },
+            "scan": {
+              "n": 600,
+              "median_ms": 0.154105,
+              "p95_ms": 1.258405
+            }
+          }
+        }
+      },
+      "decision": "reject"
+    },
+    "visitor": {
+      "loadavg_1m_before_runs": [
+        4.22,
+        4.1,
+        4.1,
+        3.94
+      ],
+      "metrics": {
+        "baseline": {
+          "memory": [
+            {
+              "wall_ms": 6975.410071,
+              "max_rss_kib": 6528,
+              "cpu_ms": 2017.452
+            },
+            {
+              "wall_ms": 4899.60573,
+              "max_rss_kib": 6784,
+              "cpu_ms": 2110.323
+            }
+          ],
+          "native": {
+            "insert": {
+              "n": 1200,
+              "median_ms": 1.3780075,
+              "p95_ms": 4.608777
+            },
+            "pk": {
+              "n": 1800,
+              "median_ms": 0.02422,
+              "p95_ms": 0.043774
+            },
+            "category": {
+              "n": 900,
+              "median_ms": 0.44556300000000004,
+              "p95_ms": 2.021831
+            },
+            "aggregate": {
+              "n": 900,
+              "median_ms": 0.3657925,
+              "p95_ms": 1.980649
+            },
+            "scan": {
+              "n": 600,
+              "median_ms": 2.7804215,
+              "p95_ms": 8.040429999999999
+            }
+          },
+          "sqlite": {
+            "insert": {
+              "n": 1200,
+              "median_ms": 1.5385149999999999,
+              "p95_ms": 4.510707
+            },
+            "pk": {
+              "n": 1800,
+              "median_ms": 0.017117,
+              "p95_ms": 0.034730000000000004
+            },
+            "category": {
+              "n": 900,
+              "median_ms": 0.1646705,
+              "p95_ms": 0.435788
+            },
+            "aggregate": {
+              "n": 900,
+              "median_ms": 0.0601515,
+              "p95_ms": 0.149531
+            },
+            "scan": {
+              "n": 600,
+              "median_ms": 0.15897,
+              "p95_ms": 0.331161
+            }
+          }
+        },
+        "candidate": {
+          "memory": [
+            {
+              "wall_ms": 4446.477268,
+              "max_rss_kib": 6656,
+              "cpu_ms": 1381.465
+            },
+            {
+              "wall_ms": 4149.071568,
+              "max_rss_kib": 6528,
+              "cpu_ms": 1399.486
+            }
+          ],
+          "native": {
+            "insert": {
+              "n": 1200,
+              "median_ms": 1.3324975000000001,
+              "p95_ms": 3.75934
+            },
+            "pk": {
+              "n": 1800,
+              "median_ms": 0.019008,
+              "p95_ms": 0.030853
+            },
+            "category": {
+              "n": 900,
+              "median_ms": 0.221092,
+              "p95_ms": 0.357789
+            },
+            "aggregate": {
+              "n": 900,
+              "median_ms": 0.1790875,
+              "p95_ms": 0.27671100000000004
+            },
+            "scan": {
+              "n": 600,
+              "median_ms": 1.0978605000000001,
+              "p95_ms": 1.492845
+            }
+          },
+          "sqlite": {
+            "insert": {
+              "n": 1200,
+              "median_ms": 1.4978470000000002,
+              "p95_ms": 4.32289
+            },
+            "pk": {
+              "n": 1800,
+              "median_ms": 0.016363000000000003,
+              "p95_ms": 0.031268
+            },
+            "category": {
+              "n": 900,
+              "median_ms": 0.1325615,
+              "p95_ms": 0.243458
+            },
+            "aggregate": {
+              "n": 900,
+              "median_ms": 0.046177499999999996,
+              "p95_ms": 0.090544
+            },
+            "scan": {
+              "n": 600,
+              "median_ms": 0.1257415,
+              "p95_ms": 0.248074
+            }
+          }
+        }
+      },
+      "decision": "accept"
+    }
+  },
+  "limitations": [
+    "shared 2-vCPU VDS, other active jobs, different load between experiments",
+    "small warm data; no large/cold or concurrency claims",
+    "RSS is whole benchmark process (NativeLog and SQLite), not isolated engine memory",
+    "durable write/receipt semantics differ between SQLite and NativeLog",
+    "no new on-disk format or power-loss claim"
+  ]
+}
