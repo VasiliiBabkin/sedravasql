@@ -1,6 +1,7 @@
 //! Explicitly experimental CLI for the SQLite-free SedravaSQL append-log.
 //! NOT the existing stable or alpha SQLite CLI. Do not use for valuable data.
 use sedravasql_native_engine::backup::{backup_to_new_file, plan_backup};
+use sedravasql_native_engine::index::{create_index, lookup_index, verify_index};
 use sedravasql_native_engine::recovery::{plan_recovery, recover_to_new_file};
 use sedravasql_native_engine::restore::restore_to_new_file;
 use sedravasql_native_engine::snapshot::{create_snapshot, verify_snapshot};
@@ -8,7 +9,7 @@ use sedravasql_native_engine::{NativeLog, NativeMutation, TransactionalStore};
 use std::{env, error::Error, fs, path::Path};
 
 fn usage() -> &'static str {
-    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | batch FILE REQUEST_KEY JSON_FILE | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256 | backup-plan SOURCE | backup-copy SOURCE DEST EXPECTED_SHA256 | snapshot-create SOURCE DEST EXPECTED_SHA256 | snapshot-verify SNAPSHOT | restore-copy SNAPSHOT NEW_DEST APPROVED_SNAPSHOT_SHA256>\n\
+    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | batch FILE REQUEST_KEY JSON_FILE | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256 | backup-plan SOURCE | backup-copy SOURCE DEST EXPECTED_SHA256 | snapshot-create SOURCE DEST EXPECTED_SHA256 | snapshot-verify SNAPSHOT | restore-copy SNAPSHOT NEW_DEST APPROVED_SNAPSHOT_SHA256 | index-create SNAPSHOT NEW_INDEX APPROVED_SNAPSHOT_SHA256 | index-verify INDEX | index-get INDEX NAMESPACE KEY>\n\
      EXPERIMENTAL / SINGLE WRITER / NO AUTOMATIC RECOVERY / NOT FOR VALUABLE DATA"
 }
 fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
@@ -58,6 +59,28 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
                     Path::new(dest),
                     approved
                 )?)?
+            );
+        }
+        [_, cmd, snapshot, index, approved] if cmd == "index-create" => {
+            println!(
+                "{}",
+                serde_json::to_string(&create_index(
+                    Path::new(snapshot),
+                    Path::new(index),
+                    approved
+                )?)?
+            );
+        }
+        [_, cmd, file] if cmd == "index-verify" => {
+            println!(
+                "{}",
+                serde_json::to_string(&verify_index(Path::new(file))?)?
+            );
+        }
+        [_, cmd, file, namespace, key] if cmd == "index-get" => {
+            println!(
+                "{}",
+                serde_json::to_string(&lookup_index(Path::new(file), namespace, key)?)?
             );
         }
         [_, cmd, file] if cmd == "verify" => {
