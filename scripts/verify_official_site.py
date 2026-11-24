@@ -48,8 +48,8 @@ def main():
     status=json.loads((SITE/"status.json").read_text("utf-8"))
     assert status["production_ready"] is False
     assert status["current_public_alpha"]=="0.1.0-alpha.1"
-    assert status["experimental_native_engine"]=="B4"
-    assert status["basis_commit"]=="3ae59dc797c2af80756e32eeafa48eefd0db6b9c"
+    assert status["experimental_native_engine"]=="B25"
+    assert status["basis_commit"]=="c0860944a3a8c900864dec6bfee426151fa08c19"
     root=ElementTree.parse(SITE/"sitemap.xml")
     links=sorted(node.text for node in root.iter() if node.tag.endswith("loc"))
     assert links==["https://sql.virtreal.ru/","https://sql.virtreal.ru/docs/"]

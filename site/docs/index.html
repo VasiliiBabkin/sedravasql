@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a1221">
-  <meta name="description" content="SedravaSQL: установка, примеры команд, состояние SQLite-прототипа и экспериментального Rust NativeLog B1–B4.">
+  <meta name="description" content="SedravaSQL: установка, примеры команд, состояние SQLite-прототипа и экспериментального Rust NativeLog B1–B25.">
   <link rel="canonical" href="https://sql.virtreal.ru/docs/">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Руководство — SedravaSQL</title>
@@ -55,14 +55,14 @@
     <aside aria-label="Содержание">
       <span class="eyebrow">Содержание</span>
       <a href="#difference">Два направления</a><a href="#install">Установка</a><a href="#first">Первый запуск</a>
-      <a href="#native">NativeLog B1–B4</a><a href="#checks">Проверка</a><a href="#limits">Ограничения</a><a href="#sources">Первоисточники</a>
+      <a href="#native">NativeLog B1–B25</a><a href="#checks">Проверка</a><a href="#limits">Ограничения</a><a href="#sources">Первоисточники</a>
     </aside>
     <article>
       <section id="difference">
         <h2>Два направления разработки</h2>
         <div class="grid">
           <div class="tile"><b>0.1.0-alpha.1 · SQLite</b><p>Работающий встраиваемый прототип на Rust: типизированное key/value API, аудит, CAS, идемпотентность и резервирование через SQLite Backup API.</p></div>
-          <div class="tile"><b>NativeLog · исследование</b><p>Отдельный Rust-движок без SQLite: append-only журнал с многоключевыми транзакциями, проверкой ревизий, журналом квитанций и экспериментами B1–B4.</p></div>
+          <div class="tile"><b>NativeLog · исследование</b><p>Отдельный Rust-движок без SQLite: append-only журнал с многоключевыми транзакциями, проверкой ревизий, журналом квитанций и экспериментами B1–B25.</p></div>
         </div>
       </section>
       <section id="install"><h2>Собрать из исходников</h2>
@@ -87,13 +87,24 @@ BIN=./target/debug/sedravasql
 "$BIN" verify "$DB"</code></pre>
         <p>Операция удаления требует отдельного подтверждения. Отложенные либо неподдерживаемые функции не объявляются работающими.</p>
       </section>
-      <section id="native"><h2>NativeLog: четыре исследования</h2>
+      <section id="native"><h2>NativeLog: SQL и исследования хранения</h2>
         <div class="grid">
           <div class="tile"><b>B1 · Восстановление префикса</b><p>Ручной план и копирование проверенного префикса оборванного журнала в новый файл.</p></div>
           <div class="tile"><b>B2 · Офлайн-копия</b><p>Копия полного исправного журнала в новый файл только при соответствии подтверждённой SHA-256.</p></div>
           <div class="tile"><b>B3 · Snapshot</b><p>Сохранение текущего состояния и квитанций в отдельный детерминированный формат SEDRSNP1.</p></div>
           <div class="tile"><b>B4 · Restore</b><p>Воссоздание полного исходного журнала из snapshot в <strong>новый</strong> файл с проверкой побайтовой SHA-256.</p></div>
         </div>
+        <h3>B16–B25: SQL, страницы и B+Tree</h3>
+        <p>NativeLog выполняет SELECT, INSERT, UPDATE, DELETE, агрегаты, ограниченный JOIN, GROUP BY, HAVING, DISTINCT, вторичные индексы, внешние ключи и последовательные транзакции B23. Записи SQL фиксируются в журнале; отдельные B24/B25 используют redo WAL и B+Tree, но ещё не являются его backend.</p>
+<pre><code>cargo build --release --locked --manifest-path native-engine/Cargo.toml
+BIN=./native-engine/target/release/sedravasql-native-preview
+DIR=$(mktemp -d)
+"$BIN" init "$DIR/demo.log"
+"$BIN" sql "$DIR/demo.log" "CREATE TABLE Items (id TEXT PRIMARY KEY, price INT)" schema-request-0001
+"$BIN" sql "$DIR/demo.log" "INSERT INTO Items (id,price) VALUES ('a',10)" insert-request-0001
+"$BIN" sql "$DIR/demo.log" "SELECT id,price FROM Items"
+"$BIN" verify "$DIR/demo.log"</code></pre>
+        <p>Используйте только тестовые данные. <a href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/NATIVE_SQL_B23.ru.md">SQL B23</a> · <a href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/NATIVE_TREE_B25.ru.md">B25</a> · <a href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/BENCHMARK_2026_11_24.ru.md">Измерения</a>.</p>
         <h3>Экспериментальный CLI</h3>
         <p>Ниже приведена демонстрация для <strong>заранее созданных тестовых файлов</strong> в приватной директории. Записывающий процесс должен быть остановлен. Это не команда для восстановления работающей базы.</p>
 <pre><code>cargo build --locked --manifest-path native-engine/Cargo.toml
@@ -118,7 +129,7 @@ python3 scripts/verify_local.py
         <a class="source-link" href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/CLAIMS.md">Реестр утверждений</a>
       </section>
       <section id="limits"><h2>Что пока не реализовано</h2>
-        <p>Нет полноценного SQL-языка, произвольных таблиц и сетевого SQL-сервера. В NativeLog ещё нет онлайн-snapshot, автоматического переключения активной базы, compaction, независимого дискового индекса или доказанной устойчивости к физической потере питания.</p>
+        <p>Есть ограниченный SQL для типизированных таблиц; полного диалекта SQL и сетевого SQL-сервера нет. В NativeLog ещё нет онлайн-snapshot, автоматического переключения активной базы, compaction, подключённого к SQL динамического дискового B+Tree или доказанной устойчивости к физической потере питания.</p>
         <p>Восстановление B4 реконструирует <strong>всю</strong> историю журнала и потому не уменьшает его размер. Экспериментальные команды B1–B4 работают с отдельно созданными файлами; эксплуатацию на реальных пользовательских данных не рекомендуем.</p>
       </section>
       <section id="sources"><h2>Документация и исходники</h2>

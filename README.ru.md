@@ -172,3 +172,5 @@ NativeLog B9: прямое чтение записей из офлайн-инд�
 Экспериментальный [изменяемый страничный движок B24](docs/NATIVE_MUTABLE_PAGER_B24.ru.md).
 
 Экспериментальное [динамическое дерево B25](docs/NATIVE_TREE_B25.ru.md).
+
+[Сравнение NativeLog SQL с SQLite (24.11.2026)](docs/BENCHMARK_2026_11_24.ru.md).

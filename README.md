@@ -1,11 +1,11 @@
 # SedravaSQL — 0.1.0-alpha.1
 
-**Experimental embedded Rust + SQLite database with reviewable mutations.**
+**Experimental Rust database toolkit: SQLite-backed managed key/value API and independent NativeLog SQL preview.**
 
 [Русский](README.ru.md) · [Implementation contract](docs/IMPLEMENTED_V0_1.ru.md)
 
 > **Runnable alpha, NOT production-ready.** Tested on Ubuntu x86_64.
-> This is a constrained typed key/value API, **not** a general SQL server,
+> The managed SQLite API is a constrained key/value interface; NativeLog has a limited SQL dialect, **not** a general SQL server,
 > full SQL dialect or PostgreSQL replacement. Do not store valuable data.
 
 Build (Rust 1.85+, Cargo, C compiler for bundled SQLite):
@@ -144,3 +144,5 @@ Experimental [B23 sequential transactions](docs/NATIVE_SQL_B23.ru.md) and [page 
 Experimental [B24 mutable pager](docs/NATIVE_MUTABLE_PAGER_B24.ru.md).
 
 Experimental [B25 dynamic tree](docs/NATIVE_TREE_B25.ru.md).
+
+[Measured SQLite comparison (24 Nov 2026)](docs/BENCHMARK_2026_11_24.ru.md).
