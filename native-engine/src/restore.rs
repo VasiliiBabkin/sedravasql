@@ -3,8 +3,8 @@
 //! receipts and verify the original journal's full SHA-256 + chain hash
 //! BEFORE creating a NEW destination. NO in-place swap/compaction.
 use super::{
-    batch_fingerprint, frame_digest, load, private_file, private_parent, step, Error, Frame,
-    NativeChange, NativeMutation, Replay, Result, FRAME_LIMIT, MAGIC,
+    apply, batch_fingerprint, frame_digest, load, prepare, private_file, private_parent, Error,
+    Frame, NativeChange, NativeMutation, Replay, Result, FRAME_LIMIT, MAGIC,
 };
 use crate::backup::same_file;
 use crate::recovery::file_sha256;
@@ -64,17 +64,17 @@ fn rebuild(snap: &Snapshot) -> Result<Vec<u8>> {
                 "restore: receipt fingerprint does not match operations",
             ));
         }
-        let mut next = step(&state, &receipt.request_key, &operations).map_err(|_| {
+        let pending = prepare(&state, &receipt.request_key, &operations).map_err(|_| {
             Error::Invalid("restore: receipt violates original transaction history")
         })?;
-        let generated = &next.receipts[&receipt.request_key].1;
+        let generated = &pending.result;
         if generated != &receipt.result {
             return Err(Error::Invalid(
                 "restore: reconstructed transaction differs from receipt",
             ));
         }
         let frame = Frame {
-            seq: next.seq,
+            seq: pending.result.sequence,
             request_key: receipt.request_key.clone(),
             operations,
         };
@@ -91,8 +91,7 @@ fn rebuild(snap: &Snapshot) -> Result<Vec<u8>> {
         out.extend_from_slice(&len);
         out.extend_from_slice(&payload);
         out.extend_from_slice(&digest);
-        next.hash = digest;
-        state = next;
+        apply(&mut state, pending, digest);
     }
     let entries = state.entries.into_values().collect::<Vec<_>>();
     if entries != snap.entries

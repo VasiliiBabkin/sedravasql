@@ -120,3 +120,5 @@ Not a live writable journal index; docs/NATIVE_INDEX_B9.ru.md.
 **Native B12 (experimental):** [digest-bound offline range pagination](docs/NATIVE_INDEX_B12.ru.md).
 
 **Native B13 (experimental):** [coherent journal reads and durable receipt lookup](docs/NATIVE_SNAPSHOT_B13.ru.md).
+
+**Native B14 (experimental):** [staged replay without full state cloning](docs/NATIVE_REPLAY_B14.ru.md).

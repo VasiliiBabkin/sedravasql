@@ -106,7 +106,6 @@ struct Frame {
     operations: Vec<NativeMutation>,
 }
 
-#[derive(Clone)]
 struct Replay {
     seq: u64,
     entries: BTreeMap<(String, String), NativeEntry>,
@@ -171,14 +170,20 @@ pub fn batch_fingerprint(ops: &[NativeMutation]) -> Result<String> {
     Ok(format!("{:x}", Sha256::digest(encoded)))
 }
 
-fn step(state: &Replay, request_key: &str, ops: &[NativeMutation]) -> Result<Replay> {
+// B14: stage only the changed rows. No clone of accumulated state/history.
+struct PreparedBatch {
+    request_key: String,
+    fingerprint: String,
+    result: NativeCommit,
+}
+
+fn prepare(state: &Replay, request_key: &str, ops: &[NativeMutation]) -> Result<PreparedBatch> {
     validate_batch(request_key, ops)?;
     if state.receipts.contains_key(request_key) {
         return Err(Error::Unsupported(
             "native log: duplicate stored request in frame".into(),
         ));
     }
-    let mut next = state.clone();
     let seq = state
         .seq
         .checked_add(1)
@@ -209,22 +214,32 @@ fn step(state: &Replay, request_key: &str, ops: &[NativeMutation]) -> Result<Rep
             },
             revision: revision + 1,
         };
-        next.entries.insert(address, row.clone());
         entries.push(row);
     }
-    next.seq = seq;
-    next.receipts.insert(
-        request_key.to_owned(),
-        (
-            batch_fingerprint(ops)?,
-            NativeCommit {
-                sequence: seq,
-                entries,
-                replayed: false,
-            },
-        ),
-    );
-    Ok(next)
+    Ok(PreparedBatch {
+        request_key: request_key.to_owned(),
+        fingerprint: batch_fingerprint(ops)?,
+        result: NativeCommit {
+            sequence: seq,
+            entries,
+            replayed: false,
+        },
+    })
+}
+
+// Infallible logical publication, called only after validation and, for
+// live commits, durable file sync. Allocation failure is process-fatal.
+fn apply(state: &mut Replay, pending: PreparedBatch, digest: [u8; 32]) {
+    state.seq = pending.result.sequence;
+    state.hash = digest;
+    for row in &pending.result.entries {
+        state
+            .entries
+            .insert((row.namespace.clone(), row.key.clone()), row.clone());
+    }
+    state
+        .receipts
+        .insert(pending.request_key, (pending.fingerprint, pending.result));
 }
 
 fn frame_digest(prev: &[u8; 32], len: &[u8; 4], payload: &[u8]) -> [u8; 32] {
@@ -275,9 +290,9 @@ fn load(file: &mut File) -> Result<Replay> {
         if record.seq != state.seq + 1 {
             return Err(fail_corrupt("nonsequential record"));
         }
-        state = step(&state, &record.request_key, &record.operations)
+        let pending = prepare(&state, &record.request_key, &record.operations)
             .map_err(|_| fail_corrupt("invalid recorded transaction"))?;
-        state.hash = digest;
+        apply(&mut state, pending, digest);
     }
     file.seek(SeekFrom::End(0))?;
     Ok(state)
@@ -535,9 +550,9 @@ impl TransactionalStore for NativeLog {
             replay.replayed = true;
             return Ok(replay);
         }
-        let mut next = step(&self.state, request_key, ops)?;
+        let pending = prepare(&self.state, request_key, ops)?;
         let record = Frame {
-            seq: next.seq,
+            seq: pending.result.sequence,
             request_key: request_key.to_owned(),
             operations: ops.to_vec(),
         };
@@ -564,14 +579,8 @@ impl TransactionalStore for NativeLog {
             self.poisoned = true; // Commit status is uncertain; do not retry on this handle.
             return Err(err);
         }
-        next.hash = checksum;
-        let result = next
-            .receipts
-            .get(request_key)
-            .expect("new request receipt")
-            .1
-            .clone();
-        self.state = next;
+        let result = pending.result.clone();
+        apply(&mut self.state, pending, checksum);
         Ok(result)
     }
 }

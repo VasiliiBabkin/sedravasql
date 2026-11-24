@@ -1,0 +1,5 @@
+# B14 — staged native journal replay
+
+`prepare` validates the entire batch against the committed map and builds only its new rows, fingerprint and receipt. `apply` publishes the prepared delta after `sync_all` in live commits, or after frame validation in replay/recovery. The accumulated `Replay` is no longer Clone. Restore also uses this pipeline and retains byte-for-byte reconstruction checks. SEDRLOG1 format, revision checks, tombstones, historical receipts and failure classification are unchanged. No automatic compaction or receipt eviction. Memory still grows with retained history. No benchmark speedup or physical power-loss claim.
+
+VDS: 41 native Rust tests, 21 SQLite Rust tests, strict Clippy, all 13 existing native CLI verification scripts PASS (including B5.1 corruption matrix and B5.2 24 debug process exits). New Rust fixture independently generates 2048 legacy-format transactions, checks historical receipt, rejected CAS with unchanged bytes, append and reopen. Replay avoids full accumulated-map cloning; actual timing depends on file and hardware.

@@ -176,3 +176,7 @@ Explicit continuation bound to immutable index SHA-256, namespace and exact boun
 ### Native B13: committed-generation snapshot reads and receipt lookup
 
 Coherent 1..16 key reads and historical receipts on one exclusive native journal handle. [RU protocol](NATIVE_SNAPSHOT_B13.ru.md). VDS: 40 native / 21 SQLite Rust tests and B9–B13 CLI PASS. No multi-process MVCC.
+
+### Native B14: staged replay and commit
+
+No full accumulated-state clone per frame; prepare validated delta, publish only after sync or verified replay. Existing format and durable receipts preserved. [Protocol](NATIVE_REPLAY_B14.ru.md). Compaction and resource budgets remain pending.

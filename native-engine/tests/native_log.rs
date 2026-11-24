@@ -326,3 +326,77 @@ fn b13_snapshot_order_tombstone_generation_and_receipts() {
     assert_eq!(view.rows[1].as_ref().unwrap().value.as_deref(), Some("new"));
     assert_eq!(db.lookup_receipt("b13-request-0001").unwrap(), Some(first));
 }
+
+#[test]
+fn b14_large_legacy_journal_replay_receipts_and_atomic_rejection() {
+    use sha2::{Digest, Sha256};
+    use std::io::Write;
+    let temp = private_tempdir();
+    let path = temp.path().join("legacy.slog");
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        f.set_permissions(std::fs::Permissions::from_mode(0o600))
+            .unwrap();
+    }
+    let magic = b"SEDRLOG1";
+    f.write_all(magic).unwrap();
+    let mut head: [u8; 32] = Sha256::digest(magic).into();
+    // Independent wire fixture, matching the pre-B14 frame contract.
+    for i in 1..=2048u64 {
+        let ops = [
+            put("n", "counter", i - 1, &i.to_string()),
+            put("n", &format!("k{i:04}"), 0, "value"),
+        ];
+        let payload = serde_json::to_vec(
+            &serde_json::json!({"seq":i,"request_key":format!("legacy-{i:012}"),"operations":ops}),
+        )
+        .unwrap();
+        let len = (payload.len() as u32).to_be_bytes();
+        let mut h = Sha256::new();
+        h.update(head);
+        h.update(len);
+        h.update(&payload);
+        head = h.finalize().into();
+        f.write_all(&len).unwrap();
+        f.write_all(&payload).unwrap();
+        f.write_all(&head).unwrap();
+    }
+    f.sync_all().unwrap();
+    drop(f);
+    let original = std::fs::read(&path).unwrap();
+    let mut db = NativeLog::open(&path).unwrap();
+    assert_eq!(db.sequence(), 2048);
+    assert_eq!(db.read("n", "counter").unwrap().unwrap().revision, 2048);
+    let first = db.lookup_receipt("legacy-000000000001").unwrap().unwrap();
+    assert_eq!(first.sequence, 1);
+    assert_eq!(first.entries[0].value.as_deref(), Some("1"));
+    assert!(db
+        .commit_batch(
+            "legacy-000000002049",
+            &[put("n", "new", 0, "x"), put("n", "counter", 0, "stale")]
+        )
+        .is_err());
+    assert!(db.read("n", "new").unwrap().is_none());
+    assert!(db.lookup_receipt("legacy-000000002049").unwrap().is_none());
+    db.verify().unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), original);
+    db.commit_batch(
+        "legacy-000000002049",
+        &[put("n", "counter", 2048, "2049"), put("n", "new", 0, "x")],
+    )
+    .unwrap();
+    drop(db);
+    let mut db = NativeLog::open(&path).unwrap();
+    assert_eq!(db.sequence(), 2049);
+    assert_eq!(
+        db.lookup_receipt("legacy-000000000001").unwrap().unwrap(),
+        first
+    );
+    db.verify().unwrap();
+}

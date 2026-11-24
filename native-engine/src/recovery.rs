@@ -5,8 +5,8 @@
 //! An incomplete final frame is only a *candidate* for operator review.
 //! The source remains unmodified regardless of the result.
 use super::{
-    fail_corrupt, frame_digest, load, private_file, private_parent, step, Error, Frame, Replay,
-    Result, FRAME_LIMIT, MAGIC,
+    apply, fail_corrupt, frame_digest, load, prepare, private_file, private_parent, Error, Frame,
+    Replay, Result, FRAME_LIMIT, MAGIC,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -104,9 +104,9 @@ fn scan(file: &mut File) -> Result<(Replay, u64)> {
         if frame.seq != state.seq + 1 {
             return Err(fail_corrupt("recovery invalid sequence"));
         }
-        state = step(&state, &frame.request_key, &frame.operations)
+        let pending = prepare(&state, &frame.request_key, &frame.operations)
             .map_err(|_| fail_corrupt("recovery invalid recorded mutation"))?;
-        state.hash = digest;
+        apply(&mut state, pending, digest);
     }
 }
 
