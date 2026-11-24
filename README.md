@@ -112,3 +112,5 @@ B8 SEDRIDX1 index. Full validation at open, then binary-search
 directory + seek/read/row SHA per key. Sample: 54 lookups, only
 4358 row-data bytes after open of 79924-byte index.
 Not a live writable journal index; docs/NATIVE_INDEX_B9.ru.md.
+
+**Native B10 (experimental):** bounded offline index range reads; [protocol and verification](docs/NATIVE_INDEX_B10.ru.md).

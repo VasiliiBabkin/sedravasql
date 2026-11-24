@@ -84,3 +84,42 @@ fn unopened_invalid_format_remains_fail_closed() {
     fs::write(&path, &bytes[..bytes.len() - 1]).unwrap();
     assert!(VerifiedIndexReader::open(&path).is_err());
 }
+
+#[test]
+fn range_is_half_open_sorted_and_bounded() {
+    let (_dir, path) = fixture();
+    let mut index = VerifiedIndexReader::open(&path).unwrap();
+    let rows = index.range("test", "key_007", "key_011", 256).unwrap();
+    assert_eq!(
+        rows.iter().map(|x| x.key.as_str()).collect::<Vec<_>>(),
+        ["key_007", "key_008", "key_009", "key_010"]
+    );
+    assert!(index.row_bytes_read() < index.report().index_bytes / 8);
+    let rows = index.range("test", "key_007", "key_011", 2).unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[1].key, "key_008");
+    assert!(index
+        .range("test", "key_064", "key_100", 256)
+        .unwrap()
+        .is_empty());
+    assert!(index.range("absent", "a", "z", 1).unwrap().is_empty());
+}
+#[test]
+fn range_rejects_invalid_bounds_and_changed_file_even_for_empty_result() {
+    let (_dir, path) = fixture();
+    let mut index = VerifiedIndexReader::open(&path).unwrap();
+    for (ns, a, b, n) in [
+        ("test", "b", "a", 1),
+        ("test", "a", "a", 1),
+        ("test", "a", "b", 0),
+        ("test", "a", "b", 257),
+        ("../bad", "a", "b", 1),
+    ] {
+        assert!(index.range(ns, a, b, n).is_err());
+    }
+    assert_eq!(index.row_bytes_read(), 0);
+    let bytes = fs::read(&path).unwrap();
+    fs::write(&path, &bytes[..bytes.len() - 1]).unwrap();
+    assert!(index.range("absent", "a", "z", 1).is_err());
+    assert!(index.get("absent", "a").is_err());
+}

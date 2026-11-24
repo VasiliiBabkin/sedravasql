@@ -268,21 +268,64 @@ impl VerifiedIndexReader {
     /// just that row's SHA-256 and exact record metadata.
     /// NOTE: malicious in-place replacement between two reads remains
     /// out of scope; mtime/ctime/inode checks are not security signatures.
+    /// Half-open key range within a single namespace, including tombstones.
+    /// At most 256 records, in lexical key order, from this offline snapshot.
+    pub fn range(
+        &mut self,
+        namespace: &str,
+        start: &str,
+        end: &str,
+        limit: usize,
+    ) -> Result<Vec<NativeEntry>> {
+        if !valid_id(namespace)
+            || !valid_id(start)
+            || !valid_id(end)
+            || start >= end
+            || !(1..=256).contains(&limit)
+        {
+            return Err(Error::Invalid("index: invalid range"));
+        }
+        self.check_identity()?;
+        let first = self
+            .rows
+            .partition_point(|row| (row.namespace.as_str(), row.key.as_str()) < (namespace, start));
+        let mut result = Vec::new();
+        for i in first..self.rows.len() {
+            let entry = &self.rows[i];
+            if result.len() == limit || entry.namespace != namespace || entry.key.as_str() >= end {
+                break;
+            }
+            let key = entry.key.clone();
+            result.push(
+                self.get(namespace, &key)?
+                    .ok_or(Error::Invalid("index: range row missing"))?,
+            );
+        }
+        self.check_identity()?;
+        Ok(result)
+    }
+    fn check_identity(&self) -> Result<()> {
+        private_parent(&self.path)?;
+        private_file(&self.path)?;
+        same_file(&self.file, &self.path)?;
+        #[cfg(unix)]
+        if identity(&self.file.metadata()?) != self.identity {
+            return Err(Error::Conflict("index: file changed after open".into()));
+        }
+        Ok(())
+    }
     pub fn get(&mut self, namespace: &str, key: &str) -> Result<Option<NativeEntry>> {
         if !valid_id(namespace) || !valid_id(key) {
             return Err(Error::Invalid("index: invalid key lookup"));
         }
-        same_file(&self.file, &self.path)?;
-        #[cfg(unix)]
-        if identity(&self.file.metadata()?) != self.identity {
-            return Err(Error::Conflict(
-                "index: index file changed after open".into(),
-            ));
-        }
+        self.check_identity()?;
         let found = self
             .rows
             .binary_search_by(|e| (e.namespace.as_str(), e.key.as_str()).cmp(&(namespace, key)));
-        let Ok(index) = found else { return Ok(None) };
+        let Ok(index) = found else {
+            self.check_identity()?;
+            return Ok(None);
+        };
         let entry = &self.rows[index];
         let absolute = self
             .data_at
@@ -306,11 +349,7 @@ impl VerifiedIndexReader {
         {
             return Err(Error::Conflict("index: indexed row mismatch".into()));
         }
-        same_file(&self.file, &self.path)?;
-        #[cfg(unix)]
-        if identity(&self.file.metadata()?) != self.identity {
-            return Err(Error::Conflict("index: file changed during lookup".into()));
-        }
+        self.check_identity()?;
         Ok(Some(record))
     }
 }

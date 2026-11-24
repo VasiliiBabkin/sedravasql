@@ -160,3 +160,7 @@ CLI index-get-many handles 1..256 queries in one verified session.
 VDS experiment: 54 queries (4 hits), 79,924-byte index, 4,358 row
 data bytes after open. Four new Rust tests and real CLI PASS.
 Not a live or production journaling index. See NATIVE_INDEX_B9.ru.md.
+
+### Native B10: bounded offline index ranges
+
+Half-open lexical ranges in a single namespace, 1..256 rows, with tombstones and checked direct disk reads. B8 format unchanged; 37 native/21 SQLite Rust tests, strict Clippy and B9/B10 CLI PASS on VDS. Still an offline index, not live storage. [Protocol](NATIVE_INDEX_B10.ru.md).
