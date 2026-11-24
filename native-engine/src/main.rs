@@ -11,7 +11,7 @@ use sedravasql_native_engine::{NativeLog, NativeMutation, TransactionalStore};
 use std::{env, error::Error, fs, path::Path};
 
 fn usage() -> &'static str {
-    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | batch FILE REQUEST_KEY JSON_FILE | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256 | backup-plan SOURCE | backup-copy SOURCE DEST EXPECTED_SHA256 | snapshot-create SOURCE DEST EXPECTED_SHA256 | snapshot-verify SNAPSHOT | restore-copy SNAPSHOT NEW_DEST APPROVED_SNAPSHOT_SHA256 | index-create SNAPSHOT NEW_INDEX APPROVED_SNAPSHOT_SHA256 | index-verify INDEX | index-get INDEX NAMESPACE KEY | index-get-many INDEX REQUESTS_JSON | index-range INDEX NAMESPACE START END LIMIT | index-page INDEX NAMESPACE START END LIMIT [CURSOR_JSON]>\n\
+    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | read-many FILE REQUESTS_JSON | receipt FILE REQUEST_KEY | batch FILE REQUEST_KEY JSON_FILE | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256 | backup-plan SOURCE | backup-copy SOURCE DEST EXPECTED_SHA256 | snapshot-create SOURCE DEST EXPECTED_SHA256 | snapshot-verify SNAPSHOT | restore-copy SNAPSHOT NEW_DEST APPROVED_SNAPSHOT_SHA256 | index-create SNAPSHOT NEW_INDEX APPROVED_SNAPSHOT_SHA256 | index-verify INDEX | index-get INDEX NAMESPACE KEY | index-get-many INDEX REQUESTS_JSON | index-range INDEX NAMESPACE START END LIMIT | index-page INDEX NAMESPACE START END LIMIT [CURSOR_JSON]>\n\
      EXPERIMENTAL / SINGLE WRITER / NO AUTOMATIC RECOVERY / NOT FOR VALUABLE DATA"
 }
 fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
@@ -148,6 +148,23 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
                 r#"{{"engine":"native-log-v1","verified":true,"sequence":{}}}"#,
                 db.sequence()
             );
+        }
+        [_, cmd, file, input] if cmd == "read-many" => {
+            let meta = fs::symlink_metadata(input)?;
+            if !meta.is_file() || meta.file_type().is_symlink() || meta.len() > 8192 {
+                return Err("read-many: invalid request file".into());
+            }
+            let keys: Vec<[String; 2]> = serde_json::from_slice(&fs::read(input)?)?;
+            let refs: Vec<(&str, &str)> = keys
+                .iter()
+                .map(|k| (k[0].as_str(), k[1].as_str()))
+                .collect();
+            let db = NativeLog::open(Path::new(file))?;
+            println!("{}", serde_json::to_string(&db.read_snapshot(&refs)?)?);
+        }
+        [_, cmd, file, key] if cmd == "receipt" => {
+            let db = NativeLog::open(Path::new(file))?;
+            println!("{}", serde_json::to_string(&db.lookup_receipt(key)?)?);
         }
         [_, cmd, file, ns, key] if cmd == "read" => {
             let db = NativeLog::open(Path::new(file))?;

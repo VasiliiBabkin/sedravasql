@@ -1,0 +1,5 @@
+# Native B13 — согласованное чтение текущего журнала и квитанции
+
+`NativeLog::read_snapshot(&[(namespace,key)])` возвращает sequence и rows для 1..16 адресов из одного committed Replay. Порядок входа и дубликаты сохраняются, отсутствующая запись — null, tombstone — объект с value:null и revision. Невалидный список отвергается целиком. `lookup_receipt(request_key)` возвращает исходный NativeCommit без повторного исполнения; отклонённые транзакции квитанций не оставляют. Оба API отвергают poisoned handle. CLI `read-many FILE REQUESTS_JSON` (массив пар) и `receipt FILE REQUEST_KEY`. Каждый CLI-запуск открывает и проверяет журнал, захватывает эксклюзивную блокировку. Не допускаются параллельные независимые читатели/писатели, MVCC или автоматическое восстановление. Формат SEDRLOG1 не меняется.
+
+VDS: 40 native Rust + 21 SQLite Rust, строгий Clippy, B9–B13 CLI PASS. Проверены согласованность поколения, порядок и дубликаты, tombstones, отклонение CAS без изменения SHA-256, квитанции после reopen, невалидные списки. Не production.

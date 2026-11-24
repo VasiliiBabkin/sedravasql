@@ -275,3 +275,54 @@ fn reject_public_parent_file_symlink_and_hardlink() {
     assert!(NativeLog::create(&link).is_err());
     assert!(NativeLog::open(&file).is_ok());
 }
+
+#[test]
+fn b13_snapshot_order_tombstone_generation_and_receipts() {
+    let temp = private_tempdir();
+    let path = temp.path().join("b13.log");
+    let mut db = NativeLog::create(&path).unwrap();
+    let keys = [("n", "b"), ("n", "a"), ("n", "missing"), ("n", "b")];
+    let empty = db.read_snapshot(&keys).unwrap();
+    assert_eq!(empty.sequence, 0);
+    assert!(empty.rows.iter().all(Option::is_none));
+    let first = db
+        .commit_batch(
+            "b13-request-0001",
+            &[put("n", "a", 0, "one"), put("n", "b", 0, "two")],
+        )
+        .unwrap();
+    let view = db.read_snapshot(&keys).unwrap();
+    assert_eq!(view.sequence, 1);
+    assert_eq!(view.rows[0], view.rows[3]);
+    assert_eq!(view.rows[1].as_ref().unwrap().value.as_deref(), Some("one"));
+    assert!(view.rows[2].is_none());
+    assert!(db
+        .commit_batch(
+            "b13-request-bad1",
+            &[put("n", "a", 1, "new"), put("n", "b", 0, "bad")]
+        )
+        .is_err());
+    assert_eq!(db.read_snapshot(&keys).unwrap(), view);
+    db.commit_batch(
+        "b13-request-0002",
+        &[delete("n", "b", 1), put("n", "a", 1, "new")],
+    )
+    .unwrap();
+    assert_eq!(
+        db.lookup_receipt("b13-request-0001").unwrap(),
+        Some(first.clone())
+    );
+    assert!(db.lookup_receipt("b13-request-bad1").unwrap().is_none());
+    assert!(db.lookup_receipt("bad").is_err());
+    assert!(db.read_snapshot(&[]).is_err());
+    assert!(db.read_snapshot(&[("n", "a"); 17]).is_err());
+    assert!(db.read_snapshot(&[("n", "a"), ("n", "../bad")]).is_err());
+    drop(db);
+    let db = NativeLog::open(&path).unwrap();
+    let view = db.read_snapshot(&keys).unwrap();
+    assert_eq!(view.sequence, 2);
+    assert_eq!(view.rows[0].as_ref().unwrap().revision, 2);
+    assert!(view.rows[0].as_ref().unwrap().value.is_none());
+    assert_eq!(view.rows[1].as_ref().unwrap().value.as_deref(), Some("new"));
+    assert_eq!(db.lookup_receipt("b13-request-0001").unwrap(), Some(first));
+}

@@ -84,6 +84,13 @@ pub struct NativeCommit {
     pub replayed: bool,
 }
 
+/// B13: coherent view of one committed generation on an exclusive handle.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NativeReadSnapshot {
+    pub sequence: u64,
+    pub rows: Vec<Option<NativeEntry>>,
+}
+
 /// Minimal backend-neutral *target* API, not yet implemented by SQLite.
 /// This interface is unstable and not exposed through Sedrava DSL.
 pub trait TransactionalStore {
@@ -454,6 +461,41 @@ impl NativeLog {
             return Err(fail_corrupt("in-memory and disk state diverged"));
         }
         Ok(())
+    }
+    /// Read 1..16 addresses in input order from one committed Replay.
+    /// Duplicates are preserved, missing rows are None, tombstones are rows.
+    /// No external process may write while this exclusive handle is open.
+    pub fn read_snapshot(&self, keys: &[(&str, &str)]) -> Result<NativeReadSnapshot> {
+        if keys.is_empty()
+            || keys.len() > MAX_NATIVE_BATCH
+            || keys.iter().any(|(ns, key)| !valid_id(ns) || !valid_id(key))
+        {
+            return Err(Error::Invalid("native log: invalid snapshot key list"));
+        }
+        let rows = keys
+            .iter()
+            .map(|(ns, key)| self.read(ns, key))
+            .collect::<Result<Vec<_>>>()?;
+        Ok(NativeReadSnapshot {
+            sequence: self.state.seq,
+            rows,
+        })
+    }
+    /// Return the original durable engine receipt without re-executing a batch.
+    pub fn lookup_receipt(&self, request_key: &str) -> Result<Option<NativeCommit>> {
+        if self.poisoned {
+            return Err(Error::Unsupported(
+                "native log: previous write uncertain".into(),
+            ));
+        }
+        if request_key.len() < 12 || !valid_id(request_key) {
+            return Err(Error::Invalid("native log: invalid idempotency key"));
+        }
+        Ok(self
+            .state
+            .receipts
+            .get(request_key)
+            .map(|(_, receipt)| receipt.clone()))
     }
     pub fn sequence(&self) -> u64 {
         self.state.seq

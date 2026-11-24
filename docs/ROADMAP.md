@@ -172,3 +172,7 @@ Two directory bounds searches and one explicit row-data seek for nonempty ranges
 ### Native B12: digest-bound range pagination
 
 Explicit continuation bound to immutable index SHA-256, namespace and exact bounds. Includes tombstones and rejects stale generation; not an authenticated cursor. VDS: 39 native, 21 SQLite Rust tests; B9–B12 CLI PASS. [Protocol](NATIVE_INDEX_B12.ru.md).
+
+### Native B13: committed-generation snapshot reads and receipt lookup
+
+Coherent 1..16 key reads and historical receipts on one exclusive native journal handle. [RU protocol](NATIVE_SNAPSHOT_B13.ru.md). VDS: 40 native / 21 SQLite Rust tests and B9–B13 CLI PASS. No multi-process MVCC.
