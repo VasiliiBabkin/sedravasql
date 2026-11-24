@@ -156,3 +156,5 @@ NativeLog B9: прямое чтение записей из офлайн-инд�
 Экспериментальные [архивы B15b](docs/NATIVE_ARCHIVE_B15B.ru.md) и [таблицы B16a](docs/NATIVE_TABLE_B16A.ru.md).
 
 Экспериментальный [нативный SQL B16b/B16c](docs/NATIVE_SQL_B16B.ru.md).
+
+Экспериментальные [агрегаты и планы B17](docs/NATIVE_SQL_B17.ru.md).

@@ -128,3 +128,5 @@ Not a live writable journal index; docs/NATIVE_INDEX_B9.ru.md.
 Experimental [B15b archives](docs/NATIVE_ARCHIVE_B15B.ru.md) and [B16a typed tables](docs/NATIVE_TABLE_B16A.ru.md).
 
 Experimental [native SQL B16b/B16c](docs/NATIVE_SQL_B16B.ru.md).
+
+Experimental [B17 analytics and access plans](docs/NATIVE_SQL_B17.ru.md).

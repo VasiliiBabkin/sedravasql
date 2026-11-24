@@ -196,3 +196,7 @@ No full accumulated-state clone per frame; prepare validated delta, publish only
 ### B16b/B16c — Native SQL subset and bindings
 
 [SQL grammar, limits, atomic receipts and typed positional bindings](NATIVE_SQL_B16B.ru.md). JOIN, aggregates, secondary indexes and live compaction pending.
+
+### B17 — aggregates, grouping and access plan
+
+[Native analytical SELECT and EXPLAIN](NATIVE_SQL_B17.ru.md). JOIN and secondary indexes pending.
