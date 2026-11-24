@@ -1287,39 +1287,8 @@ pub fn execute_bound(
         }
         let t = Tables::new(db);
         let schema = required_schema(&t, table)?;
-        let cols = if columns.is_empty() {
-            schema.columns.iter().map(|c| c.name.clone()).collect()
-        } else {
-            columns.clone()
-        };
-        for c in &cols {
-            column(&schema, c)?;
-        }
-        if let Some((c, _)) = order {
-            column(&schema, c)?;
-            if *distinct && !cols.contains(c) {
-                return Err(Error::Invalid("sql: DISTINCT ORDER BY must be projected"));
-            }
-        }
-        let mut rows = matching(&t, &schema, where_)?;
-        if let Some((c, desc)) = order {
-            // All rows have already been validated against the same schema.
-            rows.sort_by(|a, b| {
-                let o = cmp(&a.2[c], &b.2[c]).expect("validated homogeneous columns");
-                let o = if *desc { o.reverse() } else { o };
-                o.then_with(|| a.0.cmp(&b.0))
-            });
-        }
-        let mut seen = std::collections::BTreeSet::new();
-        let rows = rows
-            .into_iter()
-            .map(|(_, _, r)| cols.iter().map(|c| r[c].clone()).collect::<Vec<_>>())
-            .filter(|r| !*distinct || seen.insert(r.clone()))
-            .take(*limit)
-            .collect();
-        return Ok(SqlResult::Rows {
-            columns: cols,
-            rows,
+        return project_select(&schema, columns, *distinct, order.as_ref(), *limit, || {
+            matching(&t, &schema, where_)
         });
     }
     let request = request.ok_or(Error::Invalid("sql: write requires request key"))?;
@@ -1330,6 +1299,225 @@ pub fn execute_bound(
     }
     let ops = prepare_write(&Tables::new(db), stmt)?;
     commit_write(db, request, fingerprint, ops)
+}
+
+type MatchedRows = Vec<(String, u64, Row)>;
+
+fn project_select(
+    schema: &TableSchema,
+    columns: &[String],
+    distinct: bool,
+    order: Option<&(String, bool)>,
+    limit: usize,
+    read: impl FnOnce() -> Result<MatchedRows>,
+) -> Result<SqlResult> {
+    let cols = if columns.is_empty() {
+        schema.columns.iter().map(|c| c.name.clone()).collect()
+    } else {
+        columns.to_vec()
+    };
+    for c in &cols {
+        column(schema, c)?;
+    }
+    if let Some((c, _)) = order {
+        column(schema, c)?;
+        if distinct && !cols.contains(c) {
+            return Err(Error::Invalid("sql: DISTINCT ORDER BY must be projected"));
+        }
+    }
+    let mut rows = read()?;
+    if let Some((c, desc)) = order {
+        // All rows have already been validated against the same schema.
+        rows.sort_by(|a, b| {
+            let o = cmp(&a.2[c], &b.2[c]).expect("validated homogeneous columns");
+            let o = if *desc { o.reverse() } else { o };
+            o.then_with(|| a.0.cmp(&b.0))
+        });
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    let rows = rows
+        .into_iter()
+        .map(|(_, _, r)| cols.iter().map(|c| r[c].clone()).collect::<Vec<_>>())
+        .filter(|r| !distinct || seen.insert(r.clone()))
+        .take(limit)
+        .collect();
+    Ok(SqlResult::Rows {
+        columns: cols,
+        rows,
+    })
+}
+
+// B28: explicit, verified B+Tree projection of a single committed table.
+// The journal remains authoritative; no dual writes or automatic fallback.
+const TREE_SQL_MAX_KEYS: usize = 512;
+const TREE_SQL_SLOTS: u32 = 1024;
+
+fn tree_revision(table: &str, revision: u64) -> String {
+    format!("{table}:{revision}")
+}
+
+fn tree_source_rows(t: &Tables<'_>, schema: &TableSchema) -> Result<Vec<crate::table::TableRow>> {
+    let mut rows = Vec::new();
+    let mut after = None;
+    loop {
+        let page = t.scan_with_schema(schema, after.as_deref(), 256)?;
+        if page.is_empty() {
+            break;
+        }
+        after = page.last().map(|r| r.key.clone());
+        if rows.len() + page.len() > TREE_SQL_MAX_KEYS {
+            return Err(Error::Capacity("sql-tree: projection key budget"));
+        }
+        rows.extend(page);
+    }
+    Ok(rows)
+}
+
+/// Create a new, disposable B25 key/revision projection. Preflight every
+/// source row (including tombstones). Never write to the journal.
+/// A failed create may leave an incomplete projection; do not reuse it.
+pub fn build_tree_projection(
+    db: &mut NativeLog,
+    table: &str,
+    path: &std::path::Path,
+) -> Result<crate::tree::TreeReport> {
+    db.verify()?;
+    let t = Tables::new(db);
+    let schema = required_schema(&t, table)?;
+    let rows = tree_source_rows(&t, &schema)?;
+    let mut tree = crate::tree::Tree::create(path, TREE_SQL_SLOTS)?;
+    for r in rows {
+        tree.put(&r.key, 0, Some(tree_revision(table, r.revision)))?;
+    }
+    Ok(tree.report())
+}
+
+/// A read-only session bound to the exclusive NativeLog borrow. Verify the
+/// entire projection once on attach; the source cannot be committed through
+/// this handle while the session exists. Trusted private directories only.
+/// Equal key/revision sets are sufficient for this key-only index; source
+/// row values always come from the journal, never from the projection.
+pub struct TreeSqlReader<'a> {
+    tables: Tables<'a>,
+    schema: TableSchema,
+    tree: crate::tree::Tree,
+}
+
+impl<'a> TreeSqlReader<'a> {
+    pub fn open(db: &'a mut NativeLog, table: &str, path: &std::path::Path) -> Result<Self> {
+        db.verify()?;
+        let tables = Tables::new(db);
+        let schema = required_schema(&tables, table)?;
+        let source = tree_source_rows(&tables, &schema)?;
+        let mut tree = crate::tree::Tree::open(path)?;
+        if tree.report().rows as usize != source.len() {
+            return Err(Error::Conflict(
+                "sql-tree: projection key count mismatch".into(),
+            ));
+        }
+        // Tree::open already verified uniqueness and reachability. Equal
+        // count plus exact membership ensures there are no missing/extra keys.
+        for r in source {
+            let expected = tree_revision(table, r.revision);
+            let found = tree
+                .get(&r.key)?
+                .ok_or_else(|| Error::Conflict("sql-tree: missing key".into()))?;
+            if found.value.as_deref() != Some(expected.as_str()) || found.revision != 1 {
+                return Err(Error::Conflict(
+                    "sql-tree: projection revision mismatch".into(),
+                ));
+            }
+        }
+        Ok(Self {
+            tables,
+            schema,
+            tree,
+        })
+    }
+
+    pub fn report(&self) -> crate::tree::TreeReport {
+        self.tree.report()
+    }
+
+    /// Explicit subset: SELECT (including DISTINCT, ORDER BY and LIMIT) with
+    /// one inclusive lower and exclusive upper primary-key bound, ASCII IDs.
+    /// Additional AND predicates use the same typed evaluation as normal SQL.
+    /// Reject unsupported statements rather than implicitly scanning.
+    pub fn query(&mut self, sql: &str, params: &[Cell]) -> Result<SqlResult> {
+        let Statement::Select {
+            distinct,
+            table,
+            columns,
+            where_,
+            order,
+            limit,
+        } = parse_bound(sql, params)?
+        else {
+            return Err(Error::Invalid("sql-tree: only ordinary SELECT supported"));
+        };
+        let schema = &self.schema;
+        if table != schema.name {
+            return Err(Error::Invalid("sql-tree: query table mismatch"));
+        }
+        predicates(schema, &where_)?;
+        let bound = |op: &str| -> Result<&str> {
+            let mut found = where_
+                .iter()
+                .filter(|p| p.column == schema.primary_key && p.op == op);
+            let p = found
+                .next()
+                .ok_or(Error::Invalid("sql-tree: requires PK >= and < bounds"))?;
+            if found.next().is_some() {
+                return Err(Error::Invalid("sql-tree: duplicate range bound"));
+            }
+            match &p.value {
+                Cell::Text(k) if valid_id(k) => Ok(k),
+                _ => Err(Error::Invalid("sql-tree: bounds must be valid ASCII IDs")),
+            }
+        };
+        let start = bound(">=")?;
+        let end = bound("<")?;
+        let tables = &self.tables;
+        let tree = &mut self.tree;
+        project_select(schema, &columns, distinct, order.as_ref(), limit, || {
+            let mut out = Vec::new();
+            if start >= end {
+                return Ok(out);
+            }
+            let mut after: Option<String> = None;
+            let mut seen = 0;
+            loop {
+                let page = match after.as_deref() {
+                    None => tree.range(start, end, 256)?,
+                    Some(k) => tree.range_after(k, end, 256)?,
+                };
+                if page.is_empty() {
+                    break;
+                }
+                for entry in page {
+                    seen += 1;
+                    if seen > TREE_SQL_MAX_KEYS {
+                        return Err(Error::Capacity("sql-tree: read budget"));
+                    }
+                    let r = tables
+                        .get_with_schema(schema, &entry.key)?
+                        .ok_or_else(|| Error::Conflict("sql-tree: missing source row".into()))?;
+                    if entry.value.as_deref() != Some(tree_revision(&table, r.revision).as_str())
+                        || entry.revision != 1
+                    {
+                        return Err(Error::Conflict("sql-tree: stale projection row".into()));
+                    }
+                    after = Some(entry.key);
+                    if let Some(values) = r.values {
+                        if matches_row(&values, &where_)? {
+                            out.push((r.key, r.revision, values));
+                        }
+                    }
+                }
+            }
+            Ok(out)
+        })
+    }
 }
 
 fn replay_write(db: &NativeLog, request: &str, fingerprint: &str) -> Result<Option<SqlResult>> {

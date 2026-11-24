@@ -1,0 +1,20 @@
+{
+  "baseline": "075597a707cde19cb6ddc31360b2c98fd9c3c295",
+  "binary_sha256": "a8b93a96c798d35a1d750231015fb1f83def62e577f2876157833060a0a5c34f",
+  "source_sha256": {
+    "native-engine/src/sql.rs": "87644f80de2597459cc2403292990f151f670fba26ac4819d643372a8f3eaca9",
+    "native-engine/src/tree.rs": "2c0be8b821f4aa8cb30a932a8332193a477fcb6aa71b4bc7f87f43400cb51525",
+    "native-engine/src/main.rs": "f6c79bc87bcdaf7834281750891bbd55706b326253b00932a083467316eaa4c5",
+    "native-engine/tests/sql_b28.rs": "3d064989b6aa2f55d51555714c684d9e30ba9660b7489b4db2b195afc4a04bf2",
+    "native-engine/examples/b28_ranges.rs": "077b290f881b96e3c0ade211ed993a4cf5cb23df970a5b2248d306697a7e8fb1"
+  },
+  "raw_sha256": {
+    "range-bench-repeat.json": "0647c60510820e9ac063d26d39f15af02f7dbb5df348be8d3f95324ae6789739",
+    "range-bench.json": "88079fbd06dfb34b492d71964bf42aea9e10978685db93ff48a589f146826ea4"
+  },
+  "loadavg_1m": [
+    6.51,
+    2.5
+  ],
+  "decision": "research only; no default SQL integration"
+}

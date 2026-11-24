@@ -237,6 +237,24 @@ impl Tree {
         Ok(None)
     }
     pub fn range(&mut self, start: &str, end: &str, limit: usize) -> Result<Vec<NativeEntry>> {
+        self.range_impl(start, end, limit, true)
+    }
+    /// Exclusive continuation, used by the verified SQL projection.
+    pub(crate) fn range_after(
+        &mut self,
+        after: &str,
+        end: &str,
+        limit: usize,
+    ) -> Result<Vec<NativeEntry>> {
+        self.range_impl(after, end, limit, false)
+    }
+    fn range_impl(
+        &mut self,
+        start: &str,
+        end: &str,
+        limit: usize,
+        inclusive: bool,
+    ) -> Result<Vec<NativeEntry>> {
         if !valid_id(start) || !valid_id(end) || start >= end || !(1..=256).contains(&limit) {
             return Err(invalid());
         }
@@ -250,7 +268,7 @@ impl Tree {
                         if key.as_str() >= end {
                             return Ok(out);
                         }
-                        if key.as_str() >= start {
+                        if key.as_str() > start || (inclusive && key.as_str() == start) {
                             out.push(self.pager.get(DATA, &key)?.ok_or_else(invalid)?);
                             if out.len() == limit {
                                 return Ok(out);
