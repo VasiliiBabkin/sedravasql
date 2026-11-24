@@ -119,3 +119,11 @@ and require operator-approved B1 copy; eight fully synced
 commits preserve idempotency and accept further writes.
 No physical power-loss, online recovery, compaction or index.
 See NATIVE_CRASH_B52.ru.md.
+
+### B6 managed multi-key SQLite transaction (experimental)
+
+Explicitly opt-in API commits 2–4 managed KV PUTs, per-row audit/receipts
+and one full application response in one SQLite transaction. A caller can
+include a separately validated Sedrava server state as another managed
+row. Tests cover rollback, replay, isolation and original API compatibility.
+[Contract](MANAGED_BATCH_B6.ru.md).
