@@ -1,0 +1,400 @@
+{
+  "schema": "sedravasql-b29-cow-experiment-v1",
+  "base_commit": "363ccbc9542ed8e3ecf41e3619f78823ffeb97d4",
+  "toolchain": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+  "source_sha256": {
+    "native-engine/src/cow_tree.rs": "1e0081e8b8b57944e57422db8c255db90d1650f14cd1000dfeba966b076bc336",
+    "native-engine/src/lib.rs": "79a12fbda0f8fc00347f14ab635b0cb2cbbba0df7cefc57fa8b8d69998ef5c35",
+    "native-engine/tests/cow_b29.rs": "f144ce7f54050272c4081e1430897e8a5389bad3f78e5a198265415c36076b44",
+    "native-engine/examples/b29_cow.rs": "756292e2492353c847ac020cc1a42882d82188ac983da72aa3a198e681b1d737"
+  },
+  "binaries_sha256": {
+    "b29_cow_before": "18eddec3e96045c2e836a100d1b4cc9e8ddaec6ca6ac849eaeb1f65915c14911",
+    "b29_cow": "ffd93d965badaa9626a07da00390d997c6ff95455c62380893beb01af60df53f"
+  },
+  "evidence_sha256": {
+    "cow-bench-before-compaction.json": "7abf324238ff1e984cd9853f0a29d2a288da0d9a613896fc5a85711e49b8ba14",
+    "cow-bench-final.json": "a43c28baa90bfadea90a66b1c1f9132c8394e5e0605865c134cbdbc11be79b5c",
+    "cow_tree-before-compaction.rs.txt": "76009a9f04bfcfe860ce5554d274446d63831c9f8c6a1cdc44ca8474e661f7aa"
+  },
+  "tests_passed": 71,
+  "loadavg_1m_before_runs": [
+    2.73,
+    2.96
+  ],
+  "cpu_affinity": 0,
+  "summary": {
+    "before": [
+      {
+        "rows": 128,
+        "variant": "b25",
+        "runs": 2,
+        "build_ms": 1098.314097,
+        "open_ms": 82.062719,
+        "bytes": 4202496,
+        "commit": {
+          "n": 256,
+          "median_ms": 6.395554499999999,
+          "p95_ms": 18.878836
+        },
+        "get": {
+          "n": 480,
+          "median_ms": 0.38510049999999996,
+          "p95_ms": 0.6862520000000001
+        },
+        "range8": {
+          "n": 480,
+          "median_ms": 1.1616655,
+          "p95_ms": 2.515075
+        }
+      },
+      {
+        "rows": 128,
+        "variant": "cow-single",
+        "runs": 2,
+        "build_ms": 824.449352,
+        "open_ms": 8.681769500000001,
+        "bytes": 1114112,
+        "commit": {
+          "n": 256,
+          "median_ms": 4.8148599999999995,
+          "p95_ms": 14.671292000000001
+        },
+        "get": {
+          "n": 480,
+          "median_ms": 0.01179,
+          "p95_ms": 0.013507
+        },
+        "range8": {
+          "n": 480,
+          "median_ms": 0.01479,
+          "p95_ms": 0.018307
+        }
+      },
+      {
+        "rows": 128,
+        "variant": "cow-batch16",
+        "runs": 2,
+        "build_ms": 104.426503,
+        "open_ms": 4.3407705,
+        "bytes": 1114112,
+        "commit": {
+          "n": 16,
+          "median_ms": 11.382782500000001,
+          "p95_ms": 21.393876
+        },
+        "get": {
+          "n": 480,
+          "median_ms": 0.009561,
+          "p95_ms": 0.016242000000000003
+        },
+        "range8": {
+          "n": 480,
+          "median_ms": 0.0122805,
+          "p95_ms": 0.022701
+        }
+      },
+      {
+        "rows": 512,
+        "variant": "b25",
+        "runs": 2,
+        "build_ms": 4248.707661,
+        "open_ms": 161.21817449999998,
+        "bytes": 4202496,
+        "commit": {
+          "n": 1024,
+          "median_ms": 6.564071,
+          "p95_ms": 17.241135
+        },
+        "get": {
+          "n": 480,
+          "median_ms": 0.5863205,
+          "p95_ms": 1.6827809999999999
+        },
+        "range8": {
+          "n": 480,
+          "median_ms": 1.8230400000000002,
+          "p95_ms": 4.160454
+        }
+      },
+      {
+        "rows": 512,
+        "variant": "cow-single",
+        "runs": 2,
+        "build_ms": 2985.8897835,
+        "open_ms": 7.9804889999999995,
+        "bytes": 6246400,
+        "commit": {
+          "n": 1024,
+          "median_ms": 4.6372625,
+          "p95_ms": 12.342284
+        },
+        "get": {
+          "n": 480,
+          "median_ms": 0.0185105,
+          "p95_ms": 0.074699
+        },
+        "range8": {
+          "n": 480,
+          "median_ms": 0.117142,
+          "p95_ms": 0.19292800000000002
+        }
+      },
+      {
+        "rows": 512,
+        "variant": "cow-batch16",
+        "runs": 2,
+        "build_ms": 420.45362950000003,
+        "open_ms": 9.091930999999999,
+        "bytes": 6246400,
+        "commit": {
+          "n": 64,
+          "median_ms": 11.3975915,
+          "p95_ms": 19.209434
+        },
+        "get": {
+          "n": 480,
+          "median_ms": 0.017359,
+          "p95_ms": 0.076653
+        },
+        "range8": {
+          "n": 480,
+          "median_ms": 0.1143985,
+          "p95_ms": 0.196073
+        }
+      },
+      {
+        "rows": 2048,
+        "variant": "cow-single",
+        "runs": 1,
+        "build_ms": 10855.070964999999,
+        "open_ms": 35.431565,
+        "bytes": 28618752,
+        "commit": {
+          "n": 2048,
+          "median_ms": 4.128073,
+          "p95_ms": 11.134177000000001
+        },
+        "get": {
+          "n": 240,
+          "median_ms": 0.0587275,
+          "p95_ms": 0.137543
+        },
+        "range8": {
+          "n": 240,
+          "median_ms": 0.144596,
+          "p95_ms": 0.24622000000000002
+        }
+      },
+      {
+        "rows": 2048,
+        "variant": "cow-batch16",
+        "runs": 1,
+        "build_ms": 1707.238269,
+        "open_ms": 34.993476,
+        "bytes": 28618752,
+        "commit": {
+          "n": 128,
+          "median_ms": 11.561567,
+          "p95_ms": 21.325235000000003
+        },
+        "get": {
+          "n": 240,
+          "median_ms": 0.07461899999999999,
+          "p95_ms": 0.155117
+        },
+        "range8": {
+          "n": 240,
+          "median_ms": 0.1807645,
+          "p95_ms": 0.28843500000000005
+        }
+      }
+    ],
+    "final": [
+      {
+        "rows": 128,
+        "variant": "b25",
+        "runs": 2,
+        "build_ms": 805.0795875,
+        "open_ms": 56.736314,
+        "bytes": 4202496,
+        "commit": {
+          "n": 256,
+          "median_ms": 5.2810375,
+          "p95_ms": 9.711971
+        },
+        "get": {
+          "n": 480,
+          "median_ms": 0.319165,
+          "p95_ms": 0.480138
+        },
+        "range8": {
+          "n": 480,
+          "median_ms": 1.0035265,
+          "p95_ms": 1.438813
+        }
+      },
+      {
+        "rows": 128,
+        "variant": "cow-single",
+        "runs": 2,
+        "build_ms": 566.9501084999999,
+        "open_ms": 3.1691465,
+        "bytes": 1114112,
+        "commit": {
+          "n": 256,
+          "median_ms": 3.781984,
+          "p95_ms": 7.691683
+        },
+        "get": {
+          "n": 480,
+          "median_ms": 0.012265,
+          "p95_ms": 0.014144
+        },
+        "range8": {
+          "n": 480,
+          "median_ms": 0.0150805,
+          "p95_ms": 0.017787999999999998
+        }
+      },
+      {
+        "rows": 128,
+        "variant": "cow-batch16",
+        "runs": 2,
+        "build_ms": 72.341372,
+        "open_ms": 2.8388704999999996,
+        "bytes": 385024,
+        "commit": {
+          "n": 16,
+          "median_ms": 8.5332905,
+          "p95_ms": 11.526223
+        },
+        "get": {
+          "n": 480,
+          "median_ms": 0.00932,
+          "p95_ms": 0.014872999999999999
+        },
+        "range8": {
+          "n": 480,
+          "median_ms": 0.0125855,
+          "p95_ms": 0.018945
+        }
+      },
+      {
+        "rows": 512,
+        "variant": "b25",
+        "runs": 2,
+        "build_ms": 3317.720977,
+        "open_ms": 171.054483,
+        "bytes": 4202496,
+        "commit": {
+          "n": 1024,
+          "median_ms": 5.506828,
+          "p95_ms": 11.028853
+        },
+        "get": {
+          "n": 480,
+          "median_ms": 0.6465430000000001,
+          "p95_ms": 1.58601
+        },
+        "range8": {
+          "n": 480,
+          "median_ms": 2.0061134999999997,
+          "p95_ms": 4.439065
+        }
+      },
+      {
+        "rows": 512,
+        "variant": "cow-single",
+        "runs": 2,
+        "build_ms": 2658.1075655,
+        "open_ms": 14.025055,
+        "bytes": 6246400,
+        "commit": {
+          "n": 1024,
+          "median_ms": 4.4025305,
+          "p95_ms": 9.809699
+        },
+        "get": {
+          "n": 480,
+          "median_ms": 0.013352,
+          "p95_ms": 0.072562
+        },
+        "range8": {
+          "n": 480,
+          "median_ms": 0.135195,
+          "p95_ms": 0.21041300000000002
+        }
+      },
+      {
+        "rows": 512,
+        "variant": "cow-batch16",
+        "runs": 2,
+        "build_ms": 340.5219265,
+        "open_ms": 10.086959499999999,
+        "bytes": 2813952,
+        "commit": {
+          "n": 64,
+          "median_ms": 8.916743499999999,
+          "p95_ms": 19.051391000000002
+        },
+        "get": {
+          "n": 480,
+          "median_ms": 0.019883,
+          "p95_ms": 0.084857
+        },
+        "range8": {
+          "n": 480,
+          "median_ms": 0.137213,
+          "p95_ms": 0.24850300000000003
+        }
+      },
+      {
+        "rows": 2048,
+        "variant": "cow-single",
+        "runs": 1,
+        "build_ms": 13419.041479000001,
+        "open_ms": 69.300038,
+        "bytes": 28618752,
+        "commit": {
+          "n": 2048,
+          "median_ms": 5.107939999999999,
+          "p95_ms": 15.275233
+        },
+        "get": {
+          "n": 240,
+          "median_ms": 0.0726295,
+          "p95_ms": 0.190244
+        },
+        "range8": {
+          "n": 240,
+          "median_ms": 0.1920215,
+          "p95_ms": 0.315667
+        }
+      },
+      {
+        "rows": 2048,
+        "variant": "cow-batch16",
+        "runs": 1,
+        "build_ms": 1723.989719,
+        "open_ms": 36.33616,
+        "bytes": 16269312,
+        "commit": {
+          "n": 128,
+          "median_ms": 12.392862999999998,
+          "p95_ms": 22.551261999999998
+        },
+        "get": {
+          "n": 240,
+          "median_ms": 0.06572700000000001,
+          "p95_ms": 0.13920100000000002
+        },
+        "range8": {
+          "n": 240,
+          "median_ms": 0.14598650000000002,
+          "p95_ms": 0.22920500000000002
+        }
+      }
+    ]
+  }
+}
