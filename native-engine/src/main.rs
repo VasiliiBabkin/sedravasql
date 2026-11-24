@@ -2,7 +2,7 @@
 //! NOT the existing stable or alpha SQLite CLI. Do not use for valuable data.
 use sedravasql_native_engine::backup::{backup_to_new_file, plan_backup};
 use sedravasql_native_engine::index::{
-    create_index, lookup_index, verify_index, VerifiedIndexReader,
+    create_index, lookup_index, verify_index, RangeCursor, VerifiedIndexReader,
 };
 use sedravasql_native_engine::recovery::{plan_recovery, recover_to_new_file};
 use sedravasql_native_engine::restore::restore_to_new_file;
@@ -11,7 +11,7 @@ use sedravasql_native_engine::{NativeLog, NativeMutation, TransactionalStore};
 use std::{env, error::Error, fs, path::Path};
 
 fn usage() -> &'static str {
-    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | batch FILE REQUEST_KEY JSON_FILE | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256 | backup-plan SOURCE | backup-copy SOURCE DEST EXPECTED_SHA256 | snapshot-create SOURCE DEST EXPECTED_SHA256 | snapshot-verify SNAPSHOT | restore-copy SNAPSHOT NEW_DEST APPROVED_SNAPSHOT_SHA256 | index-create SNAPSHOT NEW_INDEX APPROVED_SNAPSHOT_SHA256 | index-verify INDEX | index-get INDEX NAMESPACE KEY | index-get-many INDEX REQUESTS_JSON | index-range INDEX NAMESPACE START END LIMIT>\n\
+    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | batch FILE REQUEST_KEY JSON_FILE | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256 | backup-plan SOURCE | backup-copy SOURCE DEST EXPECTED_SHA256 | snapshot-create SOURCE DEST EXPECTED_SHA256 | snapshot-verify SNAPSHOT | restore-copy SNAPSHOT NEW_DEST APPROVED_SNAPSHOT_SHA256 | index-create SNAPSHOT NEW_INDEX APPROVED_SNAPSHOT_SHA256 | index-verify INDEX | index-get INDEX NAMESPACE KEY | index-get-many INDEX REQUESTS_JSON | index-range INDEX NAMESPACE START END LIMIT | index-page INDEX NAMESPACE START END LIMIT [CURSOR_JSON]>\n\
      EXPERIMENTAL / SINGLE WRITER / NO AUTOMATIC RECOVERY / NOT FOR VALUABLE DATA"
 }
 fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
@@ -102,6 +102,23 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
                    "rows":answers,"row_bytes_read":reader.row_bytes_read(),
                    "queries":queries.len(),"index_bytes":reader.report().index_bytes,
                    "index_sha256":reader.report().index_sha256
+                })
+            );
+        }
+        [_, cmd, file, namespace, start, end, limit, rest @ ..] if cmd == "index-page" => {
+            let cursor: Option<RangeCursor> = match rest {
+                [] => None,
+                [raw] if raw.len() <= 2048 => Some(serde_json::from_str(raw)?),
+                _ => return Err("index-page: invalid cursor argument".into()),
+            };
+            let mut reader = VerifiedIndexReader::open(Path::new(file))?;
+            let page = reader.range_page(namespace, start, end, limit.parse()?, cursor.as_ref())?;
+            println!(
+                "{}",
+                serde_json::json!({
+                    "rows": page.rows, "next": page.next, "row_bytes_read": reader.row_bytes_read(),
+                    "row_seeks": reader.row_seeks(), "index_sha256": reader.report().index_sha256,
+                    "sequence": reader.report().sequence
                 })
             );
         }

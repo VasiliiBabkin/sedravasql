@@ -149,3 +149,53 @@ fn sequential_range_uses_one_seek_and_interleaves_with_point_reads() {
     assert_eq!(index.row_seeks(), 3);
     assert_eq!(index.row_bytes_read(), range_bytes + 2 * point_bytes);
 }
+
+#[test]
+fn page_cursor_binds_index_and_bounds_without_duplicates() {
+    let (_dir, path) = fixture();
+    let mut idx = VerifiedIndexReader::open(&path).unwrap();
+    let mut cursor = None;
+    let mut keys = Vec::new();
+    let mut pages = 0;
+    loop {
+        let page = idx
+            .range_page("test", "key_000", "key_064", 7, cursor.as_ref())
+            .unwrap();
+        keys.extend(page.rows.into_iter().map(|r| r.key));
+        pages += 1;
+        cursor = page.next;
+        if cursor.is_none() {
+            break;
+        }
+    }
+    assert_eq!(
+        keys,
+        (0..64).map(|i| format!("key_{i:03}")).collect::<Vec<_>>()
+    );
+    assert_eq!(pages, 10);
+    assert_eq!(idx.row_seeks(), 10);
+    let first = idx
+        .range_page("test", "key_000", "key_064", 1, None)
+        .unwrap();
+    let c = first.next.unwrap();
+    assert!(idx
+        .range_page("test", "key_001", "key_064", 7, Some(&c))
+        .is_err());
+    let mut bad = c.clone();
+    bad.index_sha256 = "0".repeat(64);
+    assert!(idx
+        .range_page("test", "key_000", "key_064", 7, Some(&bad))
+        .is_err());
+    let mut bad = c.clone();
+    bad.after = "key_000x".into();
+    assert!(idx
+        .range_page("test", "key_000", "key_064", 7, Some(&bad))
+        .is_err());
+    let second = idx
+        .range_page("test", "key_000", "key_064", 256, Some(&c))
+        .unwrap();
+    assert_eq!(second.rows.len(), 63);
+    assert!(second.next.is_none());
+    let empty = idx.range_page("missing", "a", "z", 1, None).unwrap();
+    assert!(empty.rows.is_empty() && empty.next.is_none());
+}

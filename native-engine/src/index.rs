@@ -45,6 +45,21 @@ pub struct IndexReport {
     pub index_sha256: String,
     pub index_bytes: u64,
 }
+/// Explicit continuation for one immutable index and range. Not a signed token.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RangeCursor {
+    pub index_sha256: String,
+    pub namespace: String,
+    pub start: String,
+    pub end: String,
+    pub after: String,
+}
+#[derive(Debug, Serialize)]
+pub struct RangePage {
+    pub rows: Vec<NativeEntry>,
+    pub next: Option<RangeCursor>,
+}
 fn sha(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
@@ -279,6 +294,18 @@ impl VerifiedIndexReader {
         end: &str,
         limit: usize,
     ) -> Result<Vec<NativeEntry>> {
+        Ok(self.range_page(namespace, start, end, limit, None)?.rows)
+    }
+    /// Continuation is bound to verified file digest and exact query bounds.
+    /// A different page size is allowed; tombstones count as rows.
+    pub fn range_page(
+        &mut self,
+        namespace: &str,
+        start: &str,
+        end: &str,
+        limit: usize,
+        cursor: Option<&RangeCursor>,
+    ) -> Result<RangePage> {
         if !valid_id(namespace)
             || !valid_id(start)
             || !valid_id(end)
@@ -288,24 +315,53 @@ impl VerifiedIndexReader {
             return Err(Error::Invalid("index: invalid range"));
         }
         self.check_identity()?;
-        let first = self
+        let mut first = self
             .rows
             .partition_point(|row| (row.namespace.as_str(), row.key.as_str()) < (namespace, start));
         let last = self
             .rows
             .partition_point(|row| (row.namespace.as_str(), row.key.as_str()) < (namespace, end));
+        if let Some(c) = cursor {
+            if c.index_sha256 != self.report.index_sha256
+                || c.namespace != namespace
+                || c.start != start
+                || c.end != end
+                || !valid_id(&c.after)
+                || c.after.as_str() < start
+                || c.after.as_str() >= end
+            {
+                return Err(Error::Invalid(
+                    "index: cursor does not match range or index",
+                ));
+            }
+            let matched = self.rows[first..last]
+                .binary_search_by(|row| row.key.cmp(&c.after))
+                .map_err(|_| Error::Invalid("index: cursor key absent"))?;
+            first += matched + 1;
+        }
         let stop = last.min(first.saturating_add(limit));
-        let mut result = Vec::with_capacity(stop - first);
+        let mut rows = Vec::with_capacity(stop - first);
         if first < stop {
             self.seek_row(first)?;
             for i in first..stop {
                 self.check_identity()?;
-                result.push(self.read_current_row(i)?);
+                rows.push(self.read_current_row(i)?);
                 self.check_identity()?;
             }
         }
         self.check_identity()?;
-        Ok(result)
+        let next = if stop < last {
+            Some(RangeCursor {
+                index_sha256: self.report.index_sha256.clone(),
+                namespace: namespace.into(),
+                start: start.into(),
+                end: end.into(),
+                after: self.rows[stop - 1].key.clone(),
+            })
+        } else {
+            None
+        };
+        Ok(RangePage { rows, next })
     }
     fn check_identity(&self) -> Result<()> {
         private_parent(&self.path)?;

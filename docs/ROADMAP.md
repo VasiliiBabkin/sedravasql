@@ -168,3 +168,7 @@ Half-open lexical ranges in a single namespace, 1..256 rows, with tombstones and
 ### Native B11: sequential verified range reads
 
 Two directory bounds searches and one explicit row-data seek for nonempty ranges; per-row integrity and metadata checks preserved. O(log N + K) directory operations. [RU protocol](NATIVE_INDEX_B11.ru.md). Still offline, not a mutable index.
+
+### Native B12: digest-bound range pagination
+
+Explicit continuation bound to immutable index SHA-256, namespace and exact bounds. Includes tombstones and rejects stale generation; not an authenticated cursor. VDS: 39 native, 21 SQLite Rust tests; B9–B12 CLI PASS. [Protocol](NATIVE_INDEX_B12.ru.md).
