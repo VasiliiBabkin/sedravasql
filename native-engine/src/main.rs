@@ -112,6 +112,7 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
                 "{}",
                 serde_json::json!({
                     "rows": rows, "row_bytes_read": reader.row_bytes_read(),
+                    "row_seeks": reader.row_seeks(),
                     "index_sha256": reader.report().index_sha256,
                     "sequence": reader.report().sequence
                 })

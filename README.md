@@ -114,3 +114,5 @@ directory + seek/read/row SHA per key. Sample: 54 lookups, only
 Not a live writable journal index; docs/NATIVE_INDEX_B9.ru.md.
 
 **Native B10 (experimental):** bounded offline index range reads; [protocol and verification](docs/NATIVE_INDEX_B10.ru.md).
+
+**Native B11 (experimental):** sequential verified range reads with one data seek. [Protocol](docs/NATIVE_INDEX_B11.ru.md).

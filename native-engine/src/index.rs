@@ -186,6 +186,7 @@ pub struct VerifiedIndexReader {
     #[cfg(unix)]
     identity: IndexIdentity,
     row_bytes_read: u64,
+    row_seeks: u64,
 }
 #[cfg(unix)]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -254,6 +255,7 @@ impl VerifiedIndexReader {
             #[cfg(unix)]
             identity: identity(&meta),
             row_bytes_read: 0,
+            row_seeks: 0,
         })
     }
     pub fn report(&self) -> &IndexReport {
@@ -264,12 +266,12 @@ impl VerifiedIndexReader {
     pub fn row_bytes_read(&self) -> u64 {
         self.row_bytes_read
     }
-    /// O(log N) directory search then one bounded disk read. Revalidates
-    /// just that row's SHA-256 and exact record metadata.
-    /// NOTE: malicious in-place replacement between two reads remains
-    /// out of scope; mtime/ctime/inode checks are not security signatures.
-    /// Half-open key range within a single namespace, including tombstones.
-    /// At most 256 records, in lexical key order, from this offline snapshot.
+    /// Explicit seeks in the row-data section after open; not OS read calls.
+    pub fn row_seeks(&self) -> u64 {
+        self.row_seeks
+    }
+    /// Half-open key range, including tombstones. One initial data seek,
+    /// then sequential verified reads, O(log N + K) directory operations.
     pub fn range(
         &mut self,
         namespace: &str,
@@ -289,17 +291,18 @@ impl VerifiedIndexReader {
         let first = self
             .rows
             .partition_point(|row| (row.namespace.as_str(), row.key.as_str()) < (namespace, start));
-        let mut result = Vec::new();
-        for i in first..self.rows.len() {
-            let entry = &self.rows[i];
-            if result.len() == limit || entry.namespace != namespace || entry.key.as_str() >= end {
-                break;
+        let last = self
+            .rows
+            .partition_point(|row| (row.namespace.as_str(), row.key.as_str()) < (namespace, end));
+        let stop = last.min(first.saturating_add(limit));
+        let mut result = Vec::with_capacity(stop - first);
+        if first < stop {
+            self.seek_row(first)?;
+            for i in first..stop {
+                self.check_identity()?;
+                result.push(self.read_current_row(i)?);
+                self.check_identity()?;
             }
-            let key = entry.key.clone();
-            result.push(
-                self.get(namespace, &key)?
-                    .ok_or(Error::Invalid("index: range row missing"))?,
-            );
         }
         self.check_identity()?;
         Ok(result)
@@ -326,13 +329,28 @@ impl VerifiedIndexReader {
             self.check_identity()?;
             return Ok(None);
         };
-        let entry = &self.rows[index];
+        self.seek_row(index)?;
+        let record = self.read_current_row(index)?;
+        self.check_identity()?;
+        Ok(Some(record))
+    }
+    fn seek_row(&mut self, index: usize) -> Result<()> {
         let absolute = self
             .data_at
-            .checked_add(entry.offset)
+            .checked_add(self.rows[index].offset)
             .ok_or(Error::Invalid("index: absolute offset overflow"))?;
-        let mut content = vec![0u8; entry.bytes as usize];
         self.file.seek(SeekFrom::Start(absolute))?;
+        self.row_seeks = self
+            .row_seeks
+            .checked_add(1)
+            .ok_or(Error::Invalid("index: seek counter overflow"))?;
+        Ok(())
+    }
+    // Caller positions the handle at the selected row; contiguous offsets
+    // were verified on open. Exact byte count advances to the next row.
+    fn read_current_row(&mut self, index: usize) -> Result<NativeEntry> {
+        let entry = &self.rows[index];
+        let mut content = vec![0u8; entry.bytes as usize];
         self.file.read_exact(&mut content)?;
         self.row_bytes_read = self
             .row_bytes_read
@@ -349,8 +367,7 @@ impl VerifiedIndexReader {
         {
             return Err(Error::Conflict("index: indexed row mismatch".into()));
         }
-        self.check_identity()?;
-        Ok(Some(record))
+        Ok(record)
     }
 }
 

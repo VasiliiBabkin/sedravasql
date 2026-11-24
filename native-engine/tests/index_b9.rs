@@ -123,3 +123,29 @@ fn range_rejects_invalid_bounds_and_changed_file_even_for_empty_result() {
     assert!(index.range("absent", "a", "z", 1).is_err());
     assert!(index.get("absent", "a").is_err());
 }
+
+#[test]
+fn sequential_range_uses_one_seek_and_interleaves_with_point_reads() {
+    let (_dir, path) = fixture();
+    let mut index = VerifiedIndexReader::open(&path).unwrap();
+    assert_eq!(index.row_seeks(), 0);
+    let rows = index.range("test", "key_000", "key_064", 256).unwrap();
+    assert_eq!(rows.len(), 64);
+    assert_eq!(index.row_seeks(), 1);
+    assert_eq!(rows[0].key, "key_000");
+    assert_eq!(rows[63].key, "key_063");
+    let range_bytes = index.row_bytes_read();
+    assert_eq!(index.get("test", "key_031").unwrap().unwrap(), rows[31]);
+    assert_eq!(index.row_seeks(), 2);
+    let point_bytes = index.row_bytes_read() - range_bytes;
+    assert!(point_bytes > 0);
+    assert_eq!(
+        index.range("test", "key_031", "key_040", 1).unwrap(),
+        vec![rows[31].clone()]
+    );
+    assert_eq!(index.row_seeks(), 3);
+    assert_eq!(index.row_bytes_read(), range_bytes + 2 * point_bytes);
+    assert!(index.range("missing", "a", "z", 256).unwrap().is_empty());
+    assert_eq!(index.row_seeks(), 3);
+    assert_eq!(index.row_bytes_read(), range_bytes + 2 * point_bytes);
+}

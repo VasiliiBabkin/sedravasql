@@ -1,0 +1,1 @@
+{"stage":"B11","base":"5487d1a275c17259bccc9897c3f209b3bb516a76","environment":"VDS Linux","native_rust_pass":38,"sqlite_rust_pass":21,"strict_clippy":"PASS","b9_cli":"PASS","b10_cli":"PASS","b11_cli":"PASS","range_rows":256,"range_explicit_seeks":1,"production":false}
