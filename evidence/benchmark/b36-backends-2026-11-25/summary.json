@@ -1,0 +1,242 @@
+[
+  {
+    "rows": 256,
+    "backend": "cow",
+    "runs": 3,
+    "insert_median_ms": 8.0627705,
+    "insert_p95_ms_median_of_runs": 11.912884,
+    "insert_run_median_range_ms": [
+      7.872752,
+      10.513299499999999
+    ],
+    "update_median_ms": 12.020567,
+    "update_p95_ms_median_of_runs": 15.854646,
+    "update_run_median_range_ms": [
+      11.6008805,
+      12.852628
+    ],
+    "read_median_ms": 0.000917,
+    "read_p95_ms_median_of_runs": 0.0013939999999999998,
+    "read_run_median_range_ms": [
+      0.000325,
+      0.000979
+    ],
+    "replay_median_ms": 0.0122585,
+    "replay_p95_ms_median_of_runs": 0.019318000000000002,
+    "replay_run_median_range_ms": [
+      0.011258500000000001,
+      0.0130125
+    ],
+    "reopen_median_ms": 30.304622,
+    "reopen_p95_ms_median_of_runs": 30.879434,
+    "reopen_run_median_range_ms": [
+      28.134328,
+      31.228656
+    ],
+    "insert_tx_per_s": 121.91679079589797,
+    "update_tx_per_s": 76.77296381731719,
+    "create_ms": 8.186923,
+    "live_bytes": 626698,
+    "closed_bytes": 626688
+  },
+  {
+    "rows": 256,
+    "backend": "native-log",
+    "runs": 3,
+    "insert_median_ms": 1.506951,
+    "insert_p95_ms_median_of_runs": 2.8677479999999997,
+    "insert_run_median_range_ms": [
+      1.3303595000000001,
+      1.954535
+    ],
+    "update_median_ms": 1.4266070000000002,
+    "update_p95_ms_median_of_runs": 2.5920330000000003,
+    "update_run_median_range_ms": [
+      1.3195299999999999,
+      1.6910414999999999
+    ],
+    "read_median_ms": 0.000915,
+    "read_p95_ms_median_of_runs": 0.001575,
+    "read_run_median_range_ms": [
+      0.0005095,
+      0.0009609999999999999
+    ],
+    "replay_median_ms": 0.013218500000000001,
+    "replay_p95_ms_median_of_runs": 0.020148,
+    "replay_run_median_range_ms": [
+      0.011325,
+      0.015674
+    ],
+    "reopen_median_ms": 6.255056,
+    "reopen_p95_ms_median_of_runs": 8.832894000000001,
+    "reopen_run_median_range_ms": [
+      6.144031,
+      8.10068
+    ],
+    "insert_tx_per_s": 563.0420302253981,
+    "update_tx_per_s": 679.2019470512416,
+    "create_ms": 2.8668769999999997,
+    "live_bytes": 94569,
+    "closed_bytes": 94559
+  },
+  {
+    "rows": 256,
+    "backend": "sqlite-batch",
+    "runs": 3,
+    "insert_median_ms": 1.8813845,
+    "insert_p95_ms_median_of_runs": 3.128818,
+    "insert_run_median_range_ms": [
+      1.848341,
+      1.9289635
+    ],
+    "update_median_ms": 1.8777265,
+    "update_p95_ms_median_of_runs": 3.092212,
+    "update_run_median_range_ms": [
+      1.8229069999999998,
+      2.0217145
+    ],
+    "read_median_ms": 0.013770500000000001,
+    "read_p95_ms_median_of_runs": 0.020211999999999997,
+    "read_run_median_range_ms": [
+      0.012945499999999999,
+      0.013802
+    ],
+    "replay_median_ms": 0.031879500000000005,
+    "replay_p95_ms_median_of_runs": 0.05033,
+    "replay_run_median_range_ms": [
+      0.031498,
+      0.0364225
+    ],
+    "reopen_median_ms": 4.710978,
+    "reopen_p95_ms_median_of_runs": 6.015412,
+    "reopen_run_median_range_ms": [
+      4.305357,
+      5.118074
+    ],
+    "insert_tx_per_s": 489.78422601840026,
+    "update_tx_per_s": 509.53662277757047,
+    "create_ms": 12.450128,
+    "live_bytes": 3835536,
+    "closed_bytes": 258048
+  },
+  {
+    "rows": 1024,
+    "backend": "cow",
+    "runs": 3,
+    "insert_median_ms": 17.2721575,
+    "insert_p95_ms_median_of_runs": 29.970892999999997,
+    "insert_run_median_range_ms": [
+      16.6480685,
+      17.563287000000003
+    ],
+    "update_median_ms": 31.2222195,
+    "update_p95_ms_median_of_runs": 42.524601000000004,
+    "update_run_median_range_ms": [
+      29.2370415,
+      32.078469
+    ],
+    "read_median_ms": 0.0012610000000000002,
+    "read_p95_ms_median_of_runs": 0.0022689999999999997,
+    "read_run_median_range_ms": [
+      0.0007545,
+      0.0013765
+    ],
+    "replay_median_ms": 0.013406999999999999,
+    "replay_p95_ms_median_of_runs": 0.019055,
+    "replay_run_median_range_ms": [
+      0.0115275,
+      0.0164895
+    ],
+    "reopen_median_ms": 112.90594800000001,
+    "reopen_p95_ms_median_of_runs": 131.904326,
+    "reopen_run_median_range_ms": [
+      106.245687,
+      129.542126
+    ],
+    "insert_tx_per_s": 57.885296749869205,
+    "update_tx_per_s": 30.90558464856254,
+    "create_ms": 7.312205,
+    "live_bytes": 2441226,
+    "closed_bytes": 2441216
+  },
+  {
+    "rows": 1024,
+    "backend": "native-log",
+    "runs": 3,
+    "insert_median_ms": 1.319973,
+    "insert_p95_ms_median_of_runs": 3.098493,
+    "insert_run_median_range_ms": [
+      1.2329705,
+      1.811866
+    ],
+    "update_median_ms": 1.3079925000000001,
+    "update_p95_ms_median_of_runs": 2.208675,
+    "update_run_median_range_ms": [
+      1.1737929999999999,
+      1.874082
+    ],
+    "read_median_ms": 0.0011619999999999998,
+    "read_p95_ms_median_of_runs": 0.002254,
+    "read_run_median_range_ms": [
+      0.0006050000000000001,
+      0.001176
+    ],
+    "replay_median_ms": 0.0116185,
+    "replay_p95_ms_median_of_runs": 0.020428,
+    "replay_run_median_range_ms": [
+      0.011557000000000001,
+      0.01704
+    ],
+    "reopen_median_ms": 20.533026,
+    "reopen_p95_ms_median_of_runs": 33.392643,
+    "reopen_run_median_range_ms": [
+      19.163225,
+      46.204390999999994
+    ],
+    "insert_tx_per_s": 657.0582944736818,
+    "update_tx_per_s": 702.2481349345655,
+    "create_ms": 2.342147,
+    "live_bytes": 378534,
+    "closed_bytes": 378524
+  },
+  {
+    "rows": 1024,
+    "backend": "sqlite-batch",
+    "runs": 3,
+    "insert_median_ms": 1.966048,
+    "insert_p95_ms_median_of_runs": 4.052151,
+    "insert_run_median_range_ms": [
+      1.724543,
+      2.166928
+    ],
+    "update_median_ms": 1.963027,
+    "update_p95_ms_median_of_runs": 3.554327,
+    "update_run_median_range_ms": [
+      1.8141155000000002,
+      2.2366335
+    ],
+    "read_median_ms": 0.0156,
+    "read_p95_ms_median_of_runs": 0.027225000000000003,
+    "read_run_median_range_ms": [
+      0.0147295,
+      0.016071000000000002
+    ],
+    "replay_median_ms": 0.038933499999999996,
+    "replay_p95_ms_median_of_runs": 0.061026000000000004,
+    "replay_run_median_range_ms": [
+      0.032268,
+      0.0456505
+    ],
+    "reopen_median_ms": 20.808749000000002,
+    "reopen_p95_ms_median_of_runs": 25.925803000000002,
+    "reopen_run_median_range_ms": [
+      15.691967000000002,
+      23.999499
+    ],
+    "insert_tx_per_s": 453.4948867769504,
+    "update_tx_per_s": 471.6612716232556,
+    "create_ms": 12.297125000000001,
+    "live_bytes": 4988768,
+    "closed_bytes": 929792
+  }
+]

@@ -1,0 +1,7 @@
+   Compiling ahash v0.8.12
+   Compiling sedravasql-native-engine v0.0.1 (/var/www/popizdim_tf7_usr/data/.sedrava-dev/b36-work/native-engine)
+   Compiling hashbrown v0.14.5
+   Compiling hashlink v0.9.1
+   Compiling rusqlite v0.32.1
+   Compiling sedravasql v0.1.0-alpha.1 (/var/www/popizdim_tf7_usr/data/.sedrava-dev/b36-work)
+    Finished `release` profile [optimized] target(s) in 37.72s
