@@ -19,6 +19,9 @@ const PAGE_MAGIC: &[u8; 8] = b"SEDRCOW1";
 const HEAD_V1: &[u8; 8] = b"SEDRHDR1";
 const HEAD_V2: &[u8; 8] = b"SEDRHDR2";
 const HEAD_MAGIC: &[u8; 8] = b"SEDRHDR3";
+const HEAD_V4: &[u8; 8] = b"SEDRHDR4";
+/// Fail closed when the manifest cannot retain another receipt. No eviction.
+pub const MAX_RECEIPTS: usize = 48;
 const MAX_PAGES: u64 = 65_536;
 const MAX_ROWS: u64 = 32_768;
 const MAX_DEPTH: usize = 8;
@@ -115,6 +118,19 @@ struct Head {
     pages: u64,
     rows: u64,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct StoredReceipt {
+    key: [u8; 32],
+    request: [u8; 32],
+    generation: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Receipt {
+    pub generation: u64,
+    pub replayed: bool,
+}
+
 #[derive(Debug, Serialize)]
 pub struct Report {
     pub generation: u64,
@@ -191,12 +207,14 @@ impl Head {
         seal(&mut p);
         p
     }
-    fn decode(p: &Page) -> Result<Self> {
+    fn decode(p: &Page) -> Result<(Self, Vec<StoredReceipt>)> {
         let legacy = &p[..8] == HEAD_V1;
         let magic = if legacy {
             HEAD_V1
         } else if &p[..8] == HEAD_V2 {
             HEAD_V2
+        } else if &p[..8] == HEAD_V4 {
+            HEAD_V4
         } else {
             HEAD_MAGIC
         };
@@ -213,8 +231,7 @@ impl Head {
             pages: d.u64()?,
             rows: d.u64()?,
         };
-        if p[d.at..PAYLOAD_END].iter().any(|&b| b != 0)
-            || h.pages < 2
+        if h.pages < 2
             || h.pages > MAX_PAGES
             || h.root == 0
             || h.root >= h.pages
@@ -223,8 +240,74 @@ impl Head {
         {
             return Err(bad());
         }
-        Ok(h)
+        let mut receipts = Vec::new();
+        if magic == HEAD_V4 {
+            let count = d.u16()? as usize;
+            if !(1..=MAX_RECEIPTS).contains(&count) {
+                return Err(bad());
+            }
+            let mut keys = BTreeSet::new();
+            let mut previous = 0;
+            for _ in 0..count {
+                let r = StoredReceipt {
+                    key: d.take(32)?.try_into().map_err(|_| bad())?,
+                    request: d.take(32)?.try_into().map_err(|_| bad())?,
+                    generation: d.u64()?,
+                };
+                if r.generation <= previous || r.generation > h.generation || !keys.insert(r.key) {
+                    return Err(bad());
+                }
+                previous = r.generation;
+                receipts.push(r);
+            }
+        }
+        if p[d.at..PAYLOAD_END].iter().any(|&b| b != 0) {
+            return Err(bad());
+        }
+        Ok((h, receipts))
     }
+
+    fn encode_manifest(self, receipts: &[StoredReceipt]) -> Result<Page> {
+        if receipts.len() > MAX_RECEIPTS {
+            return Err(cap());
+        }
+        let mut p = self.encode();
+        if !receipts.is_empty() {
+            p[..8].copy_from_slice(HEAD_V4);
+            p[56..58].copy_from_slice(&(receipts.len() as u16).to_be_bytes());
+            let mut at = 58;
+            for r in receipts {
+                p[at..at + 32].copy_from_slice(&r.key);
+                p[at + 32..at + 64].copy_from_slice(&r.request);
+                p[at + 64..at + 72].copy_from_slice(&r.generation.to_be_bytes());
+                at += 72;
+            }
+            seal(&mut p);
+        }
+        // Validate canonical encoding before touching persistent bytes.
+        Self::decode(&p)?;
+        Ok(p)
+    }
+}
+
+fn request_digest(ops: &[Mutation]) -> [u8; 32] {
+    let mut d = Sha256::new();
+    d.update(b"sedravasql-cow-receipt-request-v1\0");
+    d.update((ops.len() as u64).to_be_bytes());
+    for op in ops {
+        d.update((op.key.len() as u64).to_be_bytes());
+        d.update(op.key.as_bytes());
+        d.update(op.expected_revision.to_be_bytes());
+        match &op.value {
+            None => d.update([0]),
+            Some(value) => {
+                d.update([1]);
+                d.update((value.len() as u64).to_be_bytes());
+                d.update(value.as_bytes());
+            }
+        }
+    }
+    d.finalize().into()
 }
 fn encode(node: &Node, h: Head, id: u64) -> Result<Page> {
     let mut b = Vec::new();
@@ -520,6 +603,7 @@ pub struct CowTree {
     file: File,
     _lock: ExclusiveLock,
     head: Head,
+    receipts: Vec<StoredReceipt>,
     height: usize,
     cache: BTreeMap<u64, Node>,
     fifo: VecDeque<u64>,
@@ -544,6 +628,7 @@ impl CowTree {
             file,
             _lock: lock,
             head,
+            receipts: vec![],
             height: 1,
             cache: BTreeMap::new(),
             fifo: VecDeque::new(),
@@ -596,7 +681,7 @@ impl CowTree {
         if hf.metadata()?.len() != SIZE as u64 {
             return Err(bad());
         }
-        let head = Head::decode(&read_page(&mut hf, 0)?)?;
+        let (head, receipts) = Head::decode(&read_page(&mut hf, 0)?)?;
         let mut file = OpenOptions::new().read(true).write(true).open(path)?;
         same_file(&file, path)?;
         if read_page(&mut file, 0)? != header(&head.identity) {
@@ -608,6 +693,7 @@ impl CowTree {
             return Err(bad());
         }
         let mut tree = Self::from_parts(path, file, lock, head);
+        tree.receipts = receipts;
         // Never roll back to an older root if committed bytes are corrupt.
         let mut seen = BTreeSet::new();
         let info = tree.verify_node(head.root, 1, &mut seen)?;
@@ -758,7 +844,7 @@ impl CowTree {
         let mut hf = File::open(&hp)?;
         same_file(&hf, &hp)?;
         if hf.metadata()?.len() != SIZE as u64
-            || Head::decode(&read_page(&mut hf, 0)?)? != self.head
+            || Head::decode(&read_page(&mut hf, 0)?)? != (self.head, self.receipts.clone())
             || self.file.metadata()?.len() != self.head.pages * SIZE as u64
             || read_page(&mut self.file, 0)? != header(&self.head.identity)
             || exists(&sibling(&self.path, ".head.tmp")?)?
@@ -925,6 +1011,7 @@ impl CowTree {
         if head.pages > MAX_PAGES {
             return Err(cap());
         }
+        let manifest = head.encode_manifest(&self.receipts)?;
         // Preflight each binary node before creating the output.
         for (i, n) in nodes.iter().enumerate() {
             encode(n, head, i as u64 + 1)?;
@@ -937,7 +1024,7 @@ impl CowTree {
         file.sync_all()?;
         crate::debug_fault("cow_compact_after_pages", &file);
         let mut stage = new_file(&tmp)?;
-        stage.write_all(&head.encode())?;
+        stage.write_all(&manifest)?;
         stage.sync_all()?;
         crate::debug_fault("cow_compact_after_stage", &stage);
         fs::rename(&tmp, &hp)?;
@@ -948,6 +1035,7 @@ impl CowTree {
         // lock; no race with a cooperating opener during verification.
         let mut output = Self::from_parts(destination, file, lock, head);
         output.height = height;
+        output.receipts = self.receipts.clone();
         if output.snapshot_rows()? != rows {
             return Err(bad());
         }
@@ -1118,17 +1206,57 @@ impl CowTree {
     /// Atomically publish up to 16 distinct key mutations. Any admission
     /// error leaves the file unchanged; any I/O error after append poisons.
     pub fn commit(&mut self, ops: &[Mutation]) -> Result<Report> {
-        self.commit_inner(ops, false)
+        self.commit_inner(ops, false, None)
     }
 
     /// Experimental B32: reuse only pages unreachable from the currently
     /// committed root. The ordinary append-only commit remains unchanged.
     pub fn commit_reusing(&mut self, ops: &[Mutation]) -> Result<Report> {
-        self.commit_inner(ops, true)
+        self.commit_inner(ops, true, None)
     }
 
-    fn commit_inner(&mut self, ops: &[Mutation], reuse: bool) -> Result<Report> {
-        self.healthy()?;
+    /// Commit or replay a durable request. The key is scoped to this
+    /// database and must not be reused for a different ordered payload.
+    /// Receipts are never silently evicted; new keys fail at capacity.
+    pub fn commit_receipted(&mut self, key: &str, ops: &[Mutation]) -> Result<Receipt> {
+        if !valid_id(key) {
+            return Err(bad());
+        }
+        Self::validate_ops(ops)?;
+        self.verified_ownership()?;
+        let key = hash(key.as_bytes());
+        let request = request_digest(ops);
+        if let Some(r) = self.receipts.iter().find(|r| r.key == key) {
+            if r.request != request {
+                return Err(Error::Conflict(
+                    "cow tree: receipt key payload mismatch".into(),
+                ));
+            }
+            return Ok(Receipt {
+                generation: r.generation,
+                replayed: true,
+            });
+        }
+        if self.receipts.len() >= MAX_RECEIPTS {
+            return Err(cap());
+        }
+        let generation = self.head.generation.checked_add(1).ok_or_else(cap)?;
+        self.commit_inner(
+            ops,
+            true,
+            Some(StoredReceipt {
+                key,
+                request,
+                generation,
+            }),
+        )?;
+        Ok(Receipt {
+            generation,
+            replayed: false,
+        })
+    }
+
+    fn validate_ops(ops: &[Mutation]) -> Result<()> {
         if !(1..=16).contains(&ops.len()) {
             return Err(bad());
         }
@@ -1143,7 +1271,18 @@ impl CowTree {
                 return Err(bad());
             }
         }
-        let ownership = if reuse {
+        Ok(())
+    }
+
+    fn commit_inner(
+        &mut self,
+        ops: &[Mutation],
+        reuse: bool,
+        receipt: Option<StoredReceipt>,
+    ) -> Result<Report> {
+        self.healthy()?;
+        Self::validate_ops(ops)?;
+        let ownership = if reuse || !self.receipts.is_empty() {
             Some(self.verified_ownership()?)
         } else {
             None
@@ -1176,7 +1315,7 @@ impl CowTree {
         // Omit intermediate staged nodes superseded inside this batch.
         s.compact()?;
         // No persistent I/O until every mutation and page has been admitted.
-        let pages = if let Some(owned) = ownership {
+        let pages = if let Some(owned) = ownership.filter(|_| reuse) {
             // The staged IDs are virtual and topologically ordered. Map
             // children first, picking only old unowned IDs above all links.
             // Preserve the existing descending-link disk format.
@@ -1237,6 +1376,11 @@ impl CowTree {
                 })
                 .collect::<Result<Vec<_>>>()?
         };
+        let mut receipts = self.receipts.clone();
+        if let Some(r) = receipt {
+            receipts.push(r);
+        }
+        let manifest = s.head.encode_manifest(&receipts)?;
         let hp = sibling(&self.path, ".head")?;
         let tmp = sibling(&self.path, ".head.tmp")?;
         if exists(&tmp)? || self.file.metadata()?.len() != s.base * SIZE as u64 {
@@ -1255,13 +1399,14 @@ impl CowTree {
         self.file.sync_all()?;
         crate::debug_fault("cow_after_pages", &self.file);
         let mut stage = new_file(&tmp)?;
-        stage.write_all(&s.head.encode())?;
+        stage.write_all(&manifest)?;
         stage.sync_all()?;
         crate::debug_fault("cow_after_stage", &stage);
         fs::rename(&tmp, &hp)?;
         crate::debug_fault("cow_after_publish", &stage);
         sync_dir(&self.path)?;
         self.head = s.head;
+        self.receipts = receipts;
         if reuse {
             // Reused physical IDs can still have cached older contents.
             self.cache.clear();
