@@ -21,7 +21,11 @@ const HEAD_V2: &[u8; 8] = b"SEDRHDR2";
 const HEAD_MAGIC: &[u8; 8] = b"SEDRHDR3";
 const HEAD_V4: &[u8; 8] = b"SEDRHDR4";
 /// Fail closed when the manifest cannot retain another receipt. No eviction.
-pub const MAX_RECEIPTS: usize = 48;
+const INLINE_RECEIPTS: usize = 48;
+const RECEIPTS_PER_PAGE: usize = 48;
+pub const MAX_RECEIPTS: usize = 32_768;
+const HEAD_V5: &[u8; 8] = b"SEDRHDR5";
+const RECEIPT_MAGIC: &[u8; 8] = b"SEDRREC1";
 const MAX_PAGES: u64 = 65_536;
 const MAX_ROWS: u64 = 32_768;
 const MAX_DEPTH: usize = 8;
@@ -117,6 +121,8 @@ struct Head {
     root: u64,
     pages: u64,
     rows: u64,
+    receipt_root: u64,
+    receipt_count: u64,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct StoredReceipt {
@@ -213,6 +219,8 @@ impl Head {
             HEAD_V1
         } else if &p[..8] == HEAD_V2 {
             HEAD_V2
+        } else if &p[..8] == HEAD_V5 {
+            HEAD_V5
         } else if &p[..8] == HEAD_V4 {
             HEAD_V4
         } else {
@@ -224,12 +232,14 @@ impl Head {
             at: 8,
         };
         let identity = d.take(16)?.try_into().map_err(|_| bad())?;
-        let h = Self {
+        let mut h = Self {
             identity,
             generation: d.u64()?,
             root: d.u64()?,
             pages: d.u64()?,
             rows: d.u64()?,
+            receipt_root: 0,
+            receipt_count: 0,
         };
         if h.pages < 2
             || h.pages > MAX_PAGES
@@ -243,7 +253,7 @@ impl Head {
         let mut receipts = Vec::new();
         if magic == HEAD_V4 {
             let count = d.u16()? as usize;
-            if !(1..=MAX_RECEIPTS).contains(&count) {
+            if !(1..=INLINE_RECEIPTS).contains(&count) {
                 return Err(bad());
             }
             let mut keys = BTreeSet::new();
@@ -261,6 +271,17 @@ impl Head {
                 receipts.push(r);
             }
         }
+        if magic == HEAD_V5 {
+            h.receipt_root = d.u64()?;
+            h.receipt_count = d.u64()?;
+            if h.receipt_root == 0
+                || h.receipt_root >= h.pages
+                || !(1..=MAX_RECEIPTS as u64).contains(&h.receipt_count)
+                || h.receipt_count > h.generation
+            {
+                return Err(bad());
+            }
+        }
         if p[d.at..PAYLOAD_END].iter().any(|&b| b != 0) {
             return Err(bad());
         }
@@ -272,7 +293,18 @@ impl Head {
             return Err(cap());
         }
         let mut p = self.encode();
-        if !receipts.is_empty() {
+        if self.receipt_root != 0 {
+            if self.receipt_count != receipts.len() as u64 {
+                return Err(bad());
+            }
+            p[..8].copy_from_slice(HEAD_V5);
+            p[56..64].copy_from_slice(&self.receipt_root.to_be_bytes());
+            p[64..72].copy_from_slice(&self.receipt_count.to_be_bytes());
+            seal(&mut p);
+        } else if !receipts.is_empty() {
+            if self.receipt_count != 0 || receipts.len() > INLINE_RECEIPTS {
+                return Err(cap());
+            }
             p[..8].copy_from_slice(HEAD_V4);
             p[56..58].copy_from_slice(&(receipts.len() as u16).to_be_bytes());
             let mut at = 58;
@@ -288,6 +320,102 @@ impl Head {
         Self::decode(&p)?;
         Ok(p)
     }
+}
+
+// Receipt pages have their own magic and can never be decoded as data nodes.
+fn receipt_page(h: Head, id: u64, prev: u64, receipts: &[StoredReceipt]) -> Result<Page> {
+    if id == 0 || prev >= id || !(1..=RECEIPTS_PER_PAGE).contains(&receipts.len()) {
+        return Err(bad());
+    }
+    let mut p = [0; SIZE];
+    p[..8].copy_from_slice(RECEIPT_MAGIC);
+    p[8..24].copy_from_slice(&h.identity);
+    p[24..32].copy_from_slice(&id.to_be_bytes());
+    p[32..40].copy_from_slice(&h.generation.to_be_bytes());
+    p[40..48].copy_from_slice(&prev.to_be_bytes());
+    p[48..50].copy_from_slice(&(receipts.len() as u16).to_be_bytes());
+    let mut at = 50;
+    for r in receipts {
+        p[at..at + 32].copy_from_slice(&r.key);
+        p[at + 32..at + 64].copy_from_slice(&r.request);
+        p[at + 64..at + 72].copy_from_slice(&r.generation.to_be_bytes());
+        at += 72;
+    }
+    seal(&mut p);
+    Ok(p)
+}
+
+fn read_receipt_page(file: &mut File, h: Head, id: u64) -> Result<(u64, Vec<StoredReceipt>)> {
+    if id == 0 || id >= h.pages {
+        return Err(bad());
+    }
+    let p = read_page(file, id)?;
+    checked(&p, RECEIPT_MAGIC)?;
+    let mut d = Decode {
+        bytes: &p[..PAYLOAD_END],
+        at: 8,
+    };
+    if d.take(16)? != h.identity || d.u64()? != id {
+        return Err(bad());
+    }
+    let generation = d.u64()?;
+    let prev = d.u64()?;
+    let count = d.u16()? as usize;
+    if generation == 0
+        || generation > h.generation
+        || prev >= id
+        || !(1..=RECEIPTS_PER_PAGE).contains(&count)
+    {
+        return Err(bad());
+    }
+    let mut out = Vec::with_capacity(count);
+    for _ in 0..count {
+        let r = StoredReceipt {
+            key: d.take(32)?.try_into().map_err(|_| bad())?,
+            request: d.take(32)?.try_into().map_err(|_| bad())?,
+            generation: d.u64()?,
+        };
+        if r.generation == 0 || r.generation > generation {
+            return Err(bad());
+        }
+        out.push(r);
+    }
+    if p[d.at..PAYLOAD_END].iter().any(|&b| b != 0) {
+        return Err(bad());
+    }
+    Ok((prev, out))
+}
+
+fn load_receipts(file: &mut File, h: Head, seen: &mut BTreeSet<u64>) -> Result<Vec<StoredReceipt>> {
+    let mut remaining = h.receipt_count as usize;
+    let mut id = h.receipt_root;
+    let mut out = Vec::with_capacity(remaining);
+    while remaining > 0 {
+        if !seen.insert(id) {
+            return Err(bad());
+        }
+        let (prev, records) = read_receipt_page(file, h, id)?;
+        let expected = (remaining - 1) % RECEIPTS_PER_PAGE + 1;
+        if records.len() != expected {
+            return Err(bad());
+        }
+        remaining -= expected;
+        out.extend(records.into_iter().rev());
+        id = prev;
+    }
+    if id != 0 {
+        return Err(bad());
+    }
+    out.reverse();
+    let mut keys = BTreeSet::new();
+    let mut generation = 0;
+    for r in &out {
+        if r.generation <= generation || !keys.insert(r.key) {
+            return Err(bad());
+        }
+        generation = r.generation;
+    }
+    Ok(out)
 }
 
 fn request_digest(ops: &[Mutation]) -> [u8; 32] {
@@ -653,6 +781,8 @@ impl CowTree {
             root: 1,
             pages: 2,
             rows: 0,
+            receipt_root: 0,
+            receipt_count: 0,
         };
         let mut file = new_file(path)?;
         file.write_all(&header(&identity))?;
@@ -701,6 +831,9 @@ impl CowTree {
             return Err(bad());
         }
         tree.height = info.height;
+        if head.receipt_root != 0 {
+            tree.receipts = load_receipts(&mut tree.file, head, &mut seen)?;
+        }
         // Only unreferenced, unpublished append tail can be discarded.
         if length > committed {
             tree.file.set_len(committed)?;
@@ -844,7 +977,15 @@ impl CowTree {
         let mut hf = File::open(&hp)?;
         same_file(&hf, &hp)?;
         if hf.metadata()?.len() != SIZE as u64
-            || Head::decode(&read_page(&mut hf, 0)?)? != (self.head, self.receipts.clone())
+            || Head::decode(&read_page(&mut hf, 0)?)?
+                != (
+                    self.head,
+                    if self.head.receipt_root == 0 {
+                        self.receipts.clone()
+                    } else {
+                        vec![]
+                    },
+                )
             || self.file.metadata()?.len() != self.head.pages * SIZE as u64
             || read_page(&mut self.file, 0)? != header(&self.head.identity)
             || exists(&sibling(&self.path, ".head.tmp")?)?
@@ -856,6 +997,11 @@ impl CowTree {
         let mut seen = BTreeSet::new();
         let info = self.verify_node(self.head.root, 1, &mut seen)?;
         if info.rows != self.head.rows || info.height != self.height {
+            return Err(bad());
+        }
+        if self.head.receipt_root != 0
+            && load_receipts(&mut self.file, self.head, &mut seen)? != self.receipts
+        {
             return Err(bad());
         }
         Ok(seen)
@@ -953,6 +1099,8 @@ impl CowTree {
             rows: self.head.rows,
             root: 1,
             pages: 1,
+            receipt_root: 0,
+            receipt_count: 0,
         };
         let mut nodes = Vec::new();
         let mut level = Vec::new();
@@ -1011,6 +1159,19 @@ impl CowTree {
         if head.pages > MAX_PAGES {
             return Err(cap());
         }
+        let mut receipt_writes = Vec::new();
+        if self.head.receipt_root != 0 {
+            for chunk in self.receipts.chunks(RECEIPTS_PER_PAGE) {
+                if head.pages >= MAX_PAGES {
+                    return Err(cap());
+                }
+                let id = head.pages;
+                receipt_writes.push(receipt_page(head, id, head.receipt_root, chunk)?);
+                head.pages += 1;
+                head.receipt_root = id;
+            }
+            head.receipt_count = self.receipts.len() as u64;
+        }
         let manifest = head.encode_manifest(&self.receipts)?;
         // Preflight each binary node before creating the output.
         for (i, n) in nodes.iter().enumerate() {
@@ -1020,6 +1181,9 @@ impl CowTree {
         file.write_all(&header(&identity))?;
         for (i, n) in nodes.iter().enumerate() {
             file.write_all(&encode(n, head, i as u64 + 1)?)?;
+        }
+        for p in receipt_writes {
+            file.write_all(&p)?;
         }
         file.sync_all()?;
         crate::debug_fault("cow_compact_after_pages", &file);
@@ -1315,7 +1479,7 @@ impl CowTree {
         // Omit intermediate staged nodes superseded inside this batch.
         s.compact()?;
         // No persistent I/O until every mutation and page has been admitted.
-        let pages = if let Some(owned) = ownership.filter(|_| reuse) {
+        let mut pages = if let Some(owned) = ownership.as_ref().filter(|_| reuse) {
             // The staged IDs are virtual and topologically ordered. Map
             // children first, picking only old unowned IDs above all links.
             // Preserve the existing descending-link disk format.
@@ -1379,6 +1543,47 @@ impl CowTree {
         let mut receipts = self.receipts.clone();
         if let Some(r) = receipt {
             receipts.push(r);
+            if receipts.len() > INLINE_RECEIPTS || self.head.receipt_root != 0 {
+                let owned = ownership.as_ref().ok_or_else(bad)?;
+                let mut used: BTreeSet<u64> = pages.iter().map(|(id, _)| *id).collect();
+                let mut free: BTreeSet<u64> = (1..s.base)
+                    .filter(|id| !owned.contains(id) && !used.contains(id))
+                    .collect();
+                // Copy only the partially filled tail page; older full pages
+                // remain reachable. On v4 conversion write the entire history.
+                let (mut prev, start) = if self.head.receipt_root == 0 {
+                    (0, 0)
+                } else if self.receipts.len() % RECEIPTS_PER_PAGE == 0 {
+                    (self.head.receipt_root, self.receipts.len())
+                } else {
+                    let (prev, _) =
+                        read_receipt_page(&mut self.file, self.head, self.head.receipt_root)?;
+                    (
+                        prev,
+                        self.receipts.len() / RECEIPTS_PER_PAGE * RECEIPTS_PER_PAGE,
+                    )
+                };
+                for chunk in receipts[start..].chunks(RECEIPTS_PER_PAGE) {
+                    let id = if let Some(id) = free.range((prev + 1)..).next().copied() {
+                        free.remove(&id);
+                        id
+                    } else {
+                        if s.head.pages >= MAX_PAGES {
+                            return Err(cap());
+                        }
+                        let id = s.head.pages;
+                        s.head.pages += 1;
+                        id
+                    };
+                    if !used.insert(id) {
+                        return Err(bad());
+                    }
+                    pages.push((id, receipt_page(s.head, id, prev, chunk)?));
+                    prev = id;
+                }
+                s.head.receipt_root = prev;
+                s.head.receipt_count = receipts.len() as u64;
+            }
         }
         let manifest = s.head.encode_manifest(&receipts)?;
         let hp = sibling(&self.path, ".head")?;

@@ -1,5 +1,5 @@
 #![cfg(unix)]
-use sedravasql_native_engine::cow_tree::{CowTree, Mutation, MAX_RECEIPTS};
+use sedravasql_native_engine::cow_tree::{CowTree, Mutation};
 use sha2::{Digest, Sha256};
 #[cfg(debug_assertions)]
 use std::process::Command;
@@ -75,7 +75,7 @@ fn historical_replay_survives_normal_writes_and_compaction() {
     );
 }
 #[test]
-fn failed_cas_does_not_reserve_key_and_capacity_fails_closed() {
+fn failed_cas_does_not_reserve_key_and_legacy_boundary() {
     let d = dir();
     let p = d.path().join("tree");
     let mut t = CowTree::create(&p).unwrap();
@@ -87,7 +87,7 @@ fn failed_cas_does_not_reserve_key_and_capacity_fails_closed() {
     assert_eq!(before, bytes(&p));
     t.commit_receipted("same", &[m("a", 1, Some("ok"))])
         .unwrap();
-    for i in 1..MAX_RECEIPTS {
+    for i in 1..48 {
         let rev = t.get("a").unwrap().unwrap().revision;
         t.commit_receipted(&format!("req{i}"), &[m("a", rev, Some("next"))])
             .unwrap();
@@ -96,16 +96,25 @@ fn failed_cas_does_not_reserve_key_and_capacity_fails_closed() {
     let mut t = CowTree::open(&p).unwrap();
     let before = bytes(&p);
     let rev = t.get("a").unwrap().unwrap().revision;
-    assert!(t
-        .commit_receipted("overflow", &[m("a", rev, Some("no"))])
-        .is_err());
-    assert_eq!(before, bytes(&p));
     assert!(
         t.commit_receipted("same", &[m("a", 1, Some("ok"))])
             .unwrap()
             .replayed
     );
     assert_eq!(before, bytes(&p));
+    let r = t
+        .commit_receipted("overflow", &[m("a", rev, Some("new"))])
+        .unwrap();
+    assert!(!r.replayed);
+    assert_eq!(&bytes(&p).1[..8], b"SEDRHDR5");
+    drop(t);
+    assert!(
+        CowTree::open(&p)
+            .unwrap()
+            .commit_receipted("same", &[m("a", 1, Some("ok"))])
+            .unwrap()
+            .replayed
+    );
 }
 fn seal(page: &mut [u8]) {
     let digest = Sha256::digest(&page[..4064]);

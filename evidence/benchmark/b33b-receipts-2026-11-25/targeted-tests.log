@@ -1,0 +1,50 @@
+   Compiling sedravasql-native-engine v0.0.1 (/var/www/popizdim_tf7_usr/data/.sedrava-dev/b33b-work/native-engine)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.89s
+     Running tests/cow_b33.rs (/var/www/popizdim_tf7_usr/data/.sedrava-sqlite-a5.auiH6QDN/sedravasql/target/debug/build/sedravasql-native-engine/b6daa35db0c63e79/out/cow_b33-b6daa35db0c63e79)
+
+running 5 tests
+
+running 1 test
+SEDRAVASQL_NATIVE_TEST_FAULT:cow_after_pages
+
+running 1 test
+SEDRAVASQL_NATIVE_TEST_FAULT:cow_after_stage
+
+running 1 test
+SEDRAVASQL_NATIVE_TEST_FAULT:cow_after_publish
+test crash_receipt_and_data_publish_together ... ok
+test historical_replay_survives_normal_writes_and_compaction ... ok
+test malformed_manifest_rejected_even_with_valid_checksum ... ok
+test receipt_child ... ok
+test failed_cas_does_not_reserve_key_and_legacy_boundary ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.86s
+
+     Running tests/cow_b33b.rs (/var/www/popizdim_tf7_usr/data/.sedrava-sqlite-a5.auiH6QDN/sedravasql/target/debug/build/sedravasql-native-engine/13c3a1213ee56aac/out/cow_b33b-13c3a1213ee56aac)
+
+running 4 tests
+
+running 1 test
+SEDRAVASQL_NATIVE_TEST_FAULT:cow_after_pages
+test corrupt_receipt_page_or_manifest_is_rejected ... ok
+
+running 1 test
+SEDRAVASQL_NATIVE_TEST_FAULT:cow_after_stage
+
+running 1 test
+SEDRAVASQL_NATIVE_TEST_FAULT:cow_after_publish
+
+running 1 test
+SEDRAVASQL_NATIVE_TEST_FAULT:cow_after_pages
+
+running 1 test
+SEDRAVASQL_NATIVE_TEST_FAULT:cow_after_stage
+
+running 1 test
+SEDRAVASQL_NATIVE_TEST_FAULT:cow_after_publish
+test crash_during_v4_upgrade_and_tail_replacement ... ok
+test receipt_child ... ok
+test packed_history_crosses_multiple_pages_and_compacts ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.15s
+
