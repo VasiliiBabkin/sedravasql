@@ -1,0 +1,23 @@
+    Blocking waiting for file lock on build directory
+   Compiling sedravasql-native-engine v0.0.1 (/var/www/popizdim_tf7_usr/data/.sedrava-dev/b32-work/native-engine)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 52s
+     Running tests/cow_b32.rs (/var/www/popizdim_tf7_usr/data/.sedrava-sqlite-a5.auiH6QDN/sedravasql/target/debug/build/sedravasql-native-engine/292d42d4b9110c23/out/cow_b32-292d42d4b9110c23)
+
+running 5 tests
+test cached_live_page_corruption_blocks_reuse_without_writes ... ok
+
+running 1 test
+SEDRAVASQL_NATIVE_TEST_FAULT:cow_after_pages
+
+running 1 test
+SEDRAVASQL_NATIVE_TEST_FAULT:cow_after_stage
+
+running 1 test
+SEDRAVASQL_NATIVE_TEST_FAULT:cow_after_publish
+test process_exit_while_overwriting_free_page_keeps_committed_root ... ok
+test repeated_updates_reuse_pages_and_survive_reopen ... ok
+test reuse_child ... ok
+test mixed_tree_overflow_reuse_preserves_oracle_and_rejects_cas ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 19.19s
+

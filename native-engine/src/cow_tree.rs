@@ -431,10 +431,11 @@ struct Stage {
     head: Head,
     base: u64,
     nodes: Vec<Node>,
+    reuse: bool,
 }
 impl Stage {
     fn add(&mut self, node: Node) -> Result<u64> {
-        if self.nodes.len() >= MAX_STAGE || self.head.pages >= MAX_PAGES {
+        if self.nodes.len() >= MAX_STAGE || (!self.reuse && self.head.pages >= MAX_PAGES) {
             return Err(cap());
         }
         let id = self.head.pages;
@@ -750,7 +751,7 @@ impl CowTree {
     // B30: an offline compact copy, never an in-place swap of the two
     // committed files. Verify uncached source bytes before reading rows.
     // Retain physical keys (including tombstones), revisions and generation.
-    fn snapshot_rows(&mut self) -> Result<Vec<Record>> {
+    fn verified_ownership(&mut self) -> Result<BTreeSet<u64>> {
         self.healthy()?;
         let hp = sibling(&self.path, ".head")?;
         private_file(&hp)?;
@@ -771,7 +772,12 @@ impl CowTree {
         if info.rows != self.head.rows || info.height != self.height {
             return Err(bad());
         }
-        let mut rows = Vec::with_capacity(info.rows as usize);
+        Ok(seen)
+    }
+
+    fn snapshot_rows(&mut self) -> Result<Vec<Record>> {
+        self.verified_ownership()?;
+        let mut rows = Vec::with_capacity(self.head.rows as usize);
         let mut value_bytes = 0;
         self.collect_rows(self.head.root, 1, &mut rows, &mut value_bytes)?;
         if rows.len() as u64 != self.head.rows || rows.windows(2).any(|w| w[0].key >= w[1].key) {
@@ -1112,6 +1118,16 @@ impl CowTree {
     /// Atomically publish up to 16 distinct key mutations. Any admission
     /// error leaves the file unchanged; any I/O error after append poisons.
     pub fn commit(&mut self, ops: &[Mutation]) -> Result<Report> {
+        self.commit_inner(ops, false)
+    }
+
+    /// Experimental B32: reuse only pages unreachable from the currently
+    /// committed root. The ordinary append-only commit remains unchanged.
+    pub fn commit_reusing(&mut self, ops: &[Mutation]) -> Result<Report> {
+        self.commit_inner(ops, true)
+    }
+
+    fn commit_inner(&mut self, ops: &[Mutation], reuse: bool) -> Result<Report> {
         self.healthy()?;
         if !(1..=16).contains(&ops.len()) {
             return Err(bad());
@@ -1127,10 +1143,16 @@ impl CowTree {
                 return Err(bad());
             }
         }
+        let ownership = if reuse {
+            Some(self.verified_ownership()?)
+        } else {
+            None
+        };
         let mut s = Stage {
             head: self.head,
             base: self.head.pages,
             nodes: vec![],
+            reuse,
         };
         s.head.generation = s.head.generation.checked_add(1).ok_or_else(cap)?;
         let mut height = self.height;
@@ -1154,20 +1176,80 @@ impl CowTree {
         // Omit intermediate staged nodes superseded inside this batch.
         s.compact()?;
         // No persistent I/O until every mutation and page has been admitted.
-        let pages = s
-            .nodes
-            .iter()
-            .enumerate()
-            .map(|(i, n)| encode(n, s.head, s.base + i as u64))
-            .collect::<Result<Vec<_>>>()?;
+        let pages = if let Some(owned) = ownership {
+            // The staged IDs are virtual and topologically ordered. Map
+            // children first, picking only old unowned IDs above all links.
+            // Preserve the existing descending-link disk format.
+            let mut free: BTreeSet<u64> = (1..s.base).filter(|id| !owned.contains(id)).collect();
+            let mut remap = BTreeMap::new();
+            let mut high = s.base;
+            let mut writes = Vec::with_capacity(s.nodes.len());
+            for (i, mut node) in s.nodes.into_iter().enumerate() {
+                let mut min = 0;
+                let mut translate = |id: &mut u64| -> Result<()> {
+                    if *id >= s.base {
+                        *id = *remap.get(id).ok_or_else(bad)?;
+                    } else if *id != 0 && !owned.contains(id) {
+                        return Err(bad());
+                    }
+                    min = min.max(*id);
+                    Ok(())
+                };
+                match &mut node {
+                    Node::Leaf(rows) => {
+                        for row in rows {
+                            if let Some(StoredValue::Overflow { first, .. }) = &mut row.value {
+                                translate(first)?;
+                            }
+                        }
+                    }
+                    Node::Branch { children, .. } => {
+                        for child in children {
+                            translate(child)?;
+                        }
+                    }
+                    Node::Overflow { next, .. } => translate(next)?,
+                }
+                let id = if let Some(id) = free.range((min + 1)..).next().copied() {
+                    free.remove(&id);
+                    id
+                } else {
+                    if high >= MAX_PAGES || high <= min {
+                        return Err(cap());
+                    }
+                    let id = high;
+                    high += 1;
+                    id
+                };
+                remap.insert(s.base + i as u64, id);
+                writes.push((id, encode(&node, s.head, id)?));
+            }
+            s.head.root = *remap.get(&s.head.root).ok_or_else(bad)?;
+            s.head.pages = high;
+            writes
+        } else {
+            s.nodes
+                .iter()
+                .enumerate()
+                .map(|(i, n)| {
+                    let id = s.base + i as u64;
+                    Ok((id, encode(n, s.head, id)?))
+                })
+                .collect::<Result<Vec<_>>>()?
+        };
         let hp = sibling(&self.path, ".head")?;
         let tmp = sibling(&self.path, ".head.tmp")?;
         if exists(&tmp)? || self.file.metadata()?.len() != s.base * SIZE as u64 {
             return Err(Error::Conflict("cow tree: unexpected tail or stage".into()));
         }
+        // Stabilize the current head directory entry before overwriting any
+        // page retired by an earlier published generation.
+        if reuse {
+            sync_dir(&self.path)?;
+        }
         self.poisoned = true;
-        self.file.seek(SeekFrom::End(0))?;
-        for p in pages {
+        for (id, p) in pages {
+            self.file.seek(SeekFrom::Start(id * SIZE as u64))?;
             self.file.write_all(&p)?;
         }
         self.file.sync_all()?;
@@ -1180,6 +1262,11 @@ impl CowTree {
         crate::debug_fault("cow_after_publish", &stage);
         sync_dir(&self.path)?;
         self.head = s.head;
+        if reuse {
+            // Reused physical IDs can still have cached older contents.
+            self.cache.clear();
+            self.fifo.clear();
+        }
         self.height = height;
         self.poisoned = false;
         Ok(self.report())
