@@ -1,0 +1,12 @@
+   Compiling sedravasql-native-engine v0.0.1 (/var/www/popizdim_tf7_usr/data/.sedrava-dev/b34a-work/native-engine)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.52s
+     Running tests/cow_b34a.rs (/var/www/popizdim_tf7_usr/data/.sedrava-sqlite-a5.auiH6QDN/sedravasql/target/debug/build/sedravasql-native-engine/f4ce260e04f1ea48/out/cow_b34a-f4ce260e04f1ea48)
+
+running 4 tests
+test corrupt_source_refused_and_no_destination ... ok
+test empty_source_and_alias_rejection ... ok
+test migration_cli_round_trip ... ok
+test migrate_full_native_state_historical_receipts_and_sql_catalog ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.51s
+

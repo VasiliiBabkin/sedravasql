@@ -11,6 +11,8 @@
 pub mod archive;
 pub mod backup;
 #[cfg(unix)]
+pub mod cow_migration;
+#[cfg(unix)]
 pub mod cow_tree;
 pub mod index;
 pub mod pager;

@@ -1007,7 +1007,7 @@ impl CowTree {
         Ok(seen)
     }
 
-    fn snapshot_rows(&mut self) -> Result<Vec<Record>> {
+    pub(crate) fn snapshot_rows(&mut self) -> Result<Vec<Record>> {
         self.verified_ownership()?;
         let mut rows = Vec::with_capacity(self.head.rows as usize);
         let mut value_bytes = 0;
@@ -1091,12 +1091,73 @@ impl CowTree {
             ));
         }
         let rows = self.snapshot_rows()?;
+        Self::write_snapshot(
+            destination,
+            lock,
+            &rows,
+            self.head.generation,
+            &self.receipts,
+            self.head.receipt_root != 0,
+        )
+    }
+
+    // Internal migration entry point. Preserve supplied revisions and publish
+    // an independent packed image; no mutations on the source.
+    pub(crate) fn create_snapshot(
+        destination: &Path,
+        rows: &[Record],
+        generation: u64,
+    ) -> Result<Report> {
+        private_parent(destination)?;
+        let lock = ExclusiveLock::acquire(destination)?;
+        if exists(destination)?
+            || exists(&sibling(destination, ".head")?)?
+            || exists(&sibling(destination, ".head.tmp")?)?
+        {
+            return Err(Error::Conflict(
+                "cow tree: snapshot destination exists".into(),
+            ));
+        }
+        Self::write_snapshot(destination, lock, rows, generation, &[], false)
+    }
+
+    fn write_snapshot(
+        destination: &Path,
+        lock: ExclusiveLock,
+        rows: &[Record],
+        generation: u64,
+        receipts: &[StoredReceipt],
+        paged_receipts: bool,
+    ) -> Result<Report> {
+        let hp = sibling(destination, ".head")?;
+        let tmp = sibling(destination, ".head.tmp")?;
+        if rows.len() > MAX_ROWS as usize || rows.windows(2).any(|w| w[0].key >= w[1].key) {
+            return Err(bad());
+        }
+        let mut payload = 0usize;
+        for r in rows {
+            if !valid_id(&r.key)
+                || r.revision == 0
+                || r.revision > generation
+                || r.value
+                    .as_ref()
+                    .is_some_and(|v| v.len() > VALUE_MAX || v.contains('\0'))
+            {
+                return Err(bad());
+            }
+            payload = payload
+                .checked_add(r.value.as_ref().map_or(0, String::len))
+                .ok_or_else(cap)?;
+            if payload > SNAPSHOT_VALUE_MAX {
+                return Err(cap());
+            }
+        }
         let mut identity = [0; 16];
         File::open("/dev/urandom")?.read_exact(&mut identity)?;
         let mut head = Head {
             identity,
-            generation: self.head.generation,
-            rows: self.head.rows,
+            generation,
+            rows: rows.len() as u64,
             root: 1,
             pages: 1,
             receipt_root: 0,
@@ -1160,8 +1221,8 @@ impl CowTree {
             return Err(cap());
         }
         let mut receipt_writes = Vec::new();
-        if self.head.receipt_root != 0 {
-            for chunk in self.receipts.chunks(RECEIPTS_PER_PAGE) {
+        if paged_receipts {
+            for chunk in receipts.chunks(RECEIPTS_PER_PAGE) {
                 if head.pages >= MAX_PAGES {
                     return Err(cap());
                 }
@@ -1170,9 +1231,9 @@ impl CowTree {
                 head.pages += 1;
                 head.receipt_root = id;
             }
-            head.receipt_count = self.receipts.len() as u64;
+            head.receipt_count = receipts.len() as u64;
         }
-        let manifest = head.encode_manifest(&self.receipts)?;
+        let manifest = head.encode_manifest(receipts)?;
         // Preflight each binary node before creating the output.
         for (i, n) in nodes.iter().enumerate() {
             encode(n, head, i as u64 + 1)?;
@@ -1199,7 +1260,7 @@ impl CowTree {
         // lock; no race with a cooperating opener during verification.
         let mut output = Self::from_parts(destination, file, lock, head);
         output.height = height;
-        output.receipts = self.receipts.clone();
+        output.receipts = receipts.to_vec();
         if output.snapshot_rows()? != rows {
             return Err(bad());
         }
