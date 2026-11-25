@@ -139,7 +139,7 @@ pub fn migrate_copy(source: &Path, destination: &Path) -> Result<MigrationManife
     let mut db = NativeLog::open(source)?;
     same_file(&db.file, source)?;
     db.verify()?;
-    let (manifest, rows) = build_image(&db)?;
+    let (manifest, rows) = build_image(&db.state)?;
     // Source must still be the same verified file before publication.
     same_file(&db.file, source)?;
     db.verify()?;
@@ -147,8 +147,7 @@ pub fn migrate_copy(source: &Path, destination: &Path) -> Result<MigrationManife
     Ok(manifest)
 }
 
-fn build_image(db: &NativeLog) -> Result<(MigrationManifest, Vec<Record>)> {
-    let state = &db.state;
+fn build_image(state: &super::Replay) -> Result<(MigrationManifest, Vec<Record>)> {
     let manifest = MigrationManifest {
         format: "sedravasql-native-log-cow-image-v1".into(),
         source_sequence: state.seq,
@@ -204,7 +203,7 @@ impl MigrationImage {
         let mut db = NativeLog::open(path)?;
         same_file(&db.file, path)?;
         db.verify()?;
-        let (manifest, rows) = build_image(&db)?;
+        let (manifest, rows) = build_image(&db.state)?;
         Ok(self.manifest == manifest && self.tree.snapshot_rows()? == rows)
     }
 
@@ -287,4 +286,136 @@ impl MigrationImage {
             ..receipt.result
         }))
     }
+}
+
+/// B34b: reconstruct the original canonical NativeLog bytes from the
+/// migration image. Preflight every transaction and require the original
+/// hash plus exact image equality before writing a new destination.
+pub fn restore_log_copy(image_path: &Path, destination: &Path) -> Result<MigrationManifest> {
+    use std::{io::Write, os::unix::fs::OpenOptionsExt};
+    super::private_parent(image_path)?;
+    super::private_parent(destination)?;
+    let src = normalized(image_path)?;
+    let dst = normalized(destination)?;
+    let reserved = [
+        src.clone(),
+        side(&src, ".head")?,
+        side(&src, ".head.tmp")?,
+        side(&src, ".lock")?,
+    ];
+    let staging = side(&dst, ".migration.tmp")?;
+    for p in [dst.clone(), side(&dst, ".lock")?, staging.clone()] {
+        if reserved.contains(&p) {
+            return Err(bad());
+        }
+    }
+    let mut image = MigrationImage::open(image_path)?;
+    let original = image.tree.snapshot_rows()?;
+    let mut history = Vec::new();
+    for record in &original {
+        if record.key.starts_with("r-") && record.key.len() == 66 {
+            let (rev, item) = image
+                .object::<HistoricalReceipt>(&record.key)?
+                .ok_or_else(bad)?;
+            if receipt_address(&item.request_key)? != record.key
+                || rev != item.result.sequence
+                || item.result.replayed
+            {
+                return Err(bad());
+            }
+            history.push(item);
+        }
+    }
+    if history.len() != image.manifest.receipts
+        || history.len() as u64 != image.manifest.source_sequence
+    {
+        return Err(bad());
+    }
+    history.sort_by_key(|r| r.result.sequence);
+    let mut state = super::Replay::default();
+    let mut data = super::MAGIC.to_vec();
+    for item in history {
+        let ops = item
+            .result
+            .entries
+            .iter()
+            .map(|e| {
+                Ok(super::NativeMutation {
+                    namespace: e.namespace.clone(),
+                    key: e.key.clone(),
+                    expected_revision: e.revision.checked_sub(1).ok_or_else(bad)?,
+                    change: match &e.value {
+                        Some(v) => super::NativeChange::Put(v.clone()),
+                        None => super::NativeChange::Delete,
+                    },
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let pending = super::prepare(&state, &item.request_key, &ops)?;
+        if pending.fingerprint != item.fingerprint || pending.result != item.result {
+            return Err(bad());
+        }
+        let frame = super::Frame {
+            seq: item.result.sequence,
+            request_key: item.request_key,
+            operations: ops,
+        };
+        let payload = serde_json::to_vec(&frame).map_err(|_| bad())?;
+        if payload.is_empty()
+            || payload.len() > super::FRAME_LIMIT
+            || data.len().checked_add(payload.len() + 36).ok_or_else(cap)? as u64
+                > super::MAX_LOG_BYTES
+            || frame.seq > super::MAX_LOG_TRANSACTIONS
+        {
+            return Err(cap());
+        }
+        let len = (payload.len() as u32).to_be_bytes();
+        let checksum = super::frame_digest(&state.hash, &len, &payload);
+        data.extend_from_slice(&len);
+        data.extend_from_slice(&payload);
+        data.extend_from_slice(&checksum);
+        super::apply(&mut state, pending, checksum);
+    }
+    let (manifest, expected) = build_image(&state)?;
+    if manifest != image.manifest || expected != original {
+        return Err(Error::Conflict(
+            "cow migration: canonical source hash or state mismatch".into(),
+        ));
+    }
+    // No destination data before full validation. Stage, fsync, and link
+    // without replacement. A crash between link and unlink leaves two links,
+    // which NativeLog refuses until operator review.
+    let _lock = super::ExclusiveLock::acquire(&dst)?;
+    for path in [&dst, &staging] {
+        match fs::symlink_metadata(path) {
+            Ok(_) => {
+                return Err(Error::Conflict(
+                    "cow migration: restore destination exists".into(),
+                ))
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
+    let mut stage = fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .read(true)
+        .mode(0o600)
+        .open(&staging)?;
+    stage.write_all(&data)?;
+    stage.sync_all()?;
+    let verified = super::load(&mut stage)?;
+    if verified.hash != state.hash || verified.seq != state.seq {
+        return Err(bad());
+    }
+    super::debug_fault("migration_restore_after_stage", &stage);
+    fs::hard_link(&staging, &dst)?;
+    super::debug_fault("migration_restore_after_link", &stage);
+    fs::File::open(dst.parent().ok_or_else(bad)?)?.sync_all()?;
+    fs::remove_file(&staging)?;
+    fs::File::open(dst.parent().ok_or_else(bad)?)?.sync_all()?;
+    super::private_file(&dst)?;
+    same_file(&stage, &dst)?;
+    Ok(manifest)
 }
