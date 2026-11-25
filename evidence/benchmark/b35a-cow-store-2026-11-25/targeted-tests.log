@@ -1,0 +1,21 @@
+   Compiling sedravasql-native-engine v0.0.1 (/var/www/popizdim_tf7_usr/data/.sedrava-dev/b35a-work/native-engine)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 16.13s
+     Running tests/cow_b35a.rs (/var/www/popizdim_tf7_usr/data/.sedrava-sqlite-a5.auiH6QDN/sedravasql/target/debug/build/sedravasql-native-engine/ce1a08e8d7b70164/out/cow_b35a-ce1a08e8d7b70164)
+
+running 4 tests
+test crash_child ... ok
+
+running 1 test
+SEDRAVASQL_NATIVE_TEST_FAULT:cow_after_pages
+
+running 1 test
+SEDRAVASQL_NATIVE_TEST_FAULT:cow_after_stage
+
+running 1 test
+SEDRAVASQL_NATIVE_TEST_FAULT:cow_after_publish
+test crash_atomic_history_and_retry ... ok
+test wrong_format_and_invalid_history_refused ... ok
+test native_parity_large_frames_and_restart ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.24s
+

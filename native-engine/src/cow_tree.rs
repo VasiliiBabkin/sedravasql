@@ -1431,13 +1431,18 @@ impl CowTree {
     /// Atomically publish up to 16 distinct key mutations. Any admission
     /// error leaves the file unchanged; any I/O error after append poisons.
     pub fn commit(&mut self, ops: &[Mutation]) -> Result<Report> {
-        self.commit_inner(ops, false, None)
+        self.commit_inner(ops, false, None, 16)
     }
 
     /// Experimental B32: reuse only pages unreachable from the currently
     /// committed root. The ordinary append-only commit remains unchanged.
     pub fn commit_reusing(&mut self, ops: &[Mutation]) -> Result<Report> {
-        self.commit_inner(ops, true, None)
+        self.commit_inner(ops, true, None, 16)
+    }
+
+    /// Internal physical frame fragments, atomic in a single generation.
+    pub(crate) fn commit_frame(&mut self, ops: &[Mutation]) -> Result<Report> {
+        self.commit_inner(ops, true, None, 32)
     }
 
     /// Commit or replay a durable request. The key is scoped to this
@@ -1447,7 +1452,7 @@ impl CowTree {
         if !valid_id(key) {
             return Err(bad());
         }
-        Self::validate_ops(ops)?;
+        Self::validate_ops(ops, 16)?;
         self.verified_ownership()?;
         let key = hash(key.as_bytes());
         let request = request_digest(ops);
@@ -1474,6 +1479,7 @@ impl CowTree {
                 request,
                 generation,
             }),
+            16,
         )?;
         Ok(Receipt {
             generation,
@@ -1481,8 +1487,8 @@ impl CowTree {
         })
     }
 
-    fn validate_ops(ops: &[Mutation]) -> Result<()> {
-        if !(1..=16).contains(&ops.len()) {
+    fn validate_ops(ops: &[Mutation], max: usize) -> Result<()> {
+        if !(1..=max).contains(&ops.len()) {
             return Err(bad());
         }
         let mut keys = BTreeSet::new();
@@ -1504,9 +1510,10 @@ impl CowTree {
         ops: &[Mutation],
         reuse: bool,
         receipt: Option<StoredReceipt>,
+        max: usize,
     ) -> Result<Report> {
         self.healthy()?;
-        Self::validate_ops(ops)?;
+        Self::validate_ops(ops, max)?;
         let ownership = if reuse || !self.receipts.is_empty() {
             Some(self.verified_ownership()?)
         } else {

@@ -1,0 +1,5 @@
+# B35a — записывающий CowStore
+
+Экспериментальный TransactionalStore. COW хранит канонические NativeLog frames, разбитые по границам UTF-8 на части до 60 KiB, с дескриптором и chain SHA-256. Все части одной логической транзакции публикуются атомарно одним COW поколением. При открытии проверяется весь граф владения, последовательность и формат frames, fingerprint и ограничения через штатный prepare/apply. Replay, записи, индексы и исторические NativeCommit восстанавливаются в RAM. Это не direct-to-disk SQL row index и не read-only B34 migration image. Логический batch до 16 операций; внутренний physical batch до 32; 32 MiB serialized payload, 32768 физических записей и обычные COW page/stage limits. Ошибка записи блокирует экземпляр до reopen. Повтор ключа возвращает исторический результат, конфликт payload отклоняется. Полная проверка при записи дорогая; производительность не заявляется.
+
+4 целевых теста PASS, включая crash child: 16 значений по 64 KiB, parity NativeLog, restart, namespace/range, CAS без частичных изменений, tombstone, replay, неправильный формат, три process-exit точки. Не тест физического отключения питания. Основной backend не переключён.
