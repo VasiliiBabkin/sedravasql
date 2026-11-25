@@ -1,0 +1,10 @@
+   Compiling sedravasql-native-engine v0.0.1 (/var/www/popizdim_tf7_usr/data/.sedrava-dev/b35b-work/native-engine)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.10s
+     Running tests/cow_b35b.rs (/var/www/popizdim_tf7_usr/data/.sedrava-sqlite-a5.auiH6QDN/sedravasql/target/debug/build/sedravasql-native-engine/44376b9776d474ed/out/cow_b35b-44376b9776d474ed)
+
+running 2 tests
+test explicit_cli_backend_roundtrip ... ok
+test sql_parity_and_historical_replay ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.56s
+

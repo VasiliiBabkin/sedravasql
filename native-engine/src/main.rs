@@ -13,7 +13,7 @@ use sedravasql_native_engine::{NativeLimits, NativeLog, NativeMutation, Transact
 use std::{env, error::Error, fs, path::Path};
 
 fn usage() -> &'static str {
-    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | read-many FILE REQUESTS_JSON | receipt FILE REQUEST_KEY | batch FILE REQUEST_KEY JSON_FILE [MAX_BYTES MAX_TRANSACTIONS] | usage FILE [MAX_BYTES MAX_TRANSACTIONS] | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256 | sql FILE SQL [REQUEST_KEY] | sql-transaction FILE REQUEST_KEY STATEMENTS_JSON | sql-sequential FILE REQUEST_KEY STATEMENTS_JSON | explain FILE SQL [PARAMS_JSON] | sql-bind FILE SQL PARAMS_JSON [REQUEST_KEY] | table-batch FILE REQUEST_KEY CHANGES_JSON | table-create FILE REQUEST_KEY SCHEMA_JSON | table-schema FILE TABLE | table-put FILE REQUEST_KEY TABLE EXPECTED_REVISION ROW_JSON | table-delete FILE REQUEST_KEY TABLE KEY EXPECTED_REVISION | table-get FILE TABLE KEY | table-scan FILE TABLE LIMIT [AFTER] | archive-create SOURCE DEST EXPECTED_SHA256 | archive-verify ARCHIVE | archive-restore ARCHIVE DEST EXPECTED_SHA256 | backup-plan SOURCE | backup-copy SOURCE DEST EXPECTED_SHA256 | snapshot-create SOURCE DEST EXPECTED_SHA256 | snapshot-verify SNAPSHOT | restore-copy SNAPSHOT NEW_DEST APPROVED_SNAPSHOT_SHA256 | tree-init FILE SLOTS | tree-verify FILE | tree-get FILE KEY | tree-range FILE START END LIMIT | tree-put FILE KEY EXPECTED_REVISION VALUE_JSON | pager-init FILE SLOTS | pager-verify FILE | pager-get FILE NAMESPACE KEY | pager-commit FILE CHANGES_JSON | page-create SNAPSHOT NEW_IMAGE APPROVED_SHA256 | migration-copy LOG NEW_IMAGE | migration-restore IMAGE NEW_LOG | migration-info IMAGE | migration-read IMAGE NAMESPACE KEY | migration-receipt IMAGE REQUEST_KEY | migration-match-log IMAGE LOG | page-build-log LOG NEW_IMAGE | page-refresh LOG IMAGE STAGING APPROVED_OLD_SHA256 | page-verify IMAGE | page-get IMAGE NAMESPACE KEY | page-match-log IMAGE LOG | index-create SNAPSHOT NEW_INDEX APPROVED_SNAPSHOT_SHA256 | index-verify INDEX | index-get INDEX NAMESPACE KEY | index-get-many INDEX REQUESTS_JSON | index-range INDEX NAMESPACE START END LIMIT | index-page INDEX NAMESPACE START END LIMIT [CURSOR_JSON]>\n\
+    "USAGE: sedravasql-native-preview <init FILE | verify FILE | read FILE NAMESPACE KEY | read-many FILE REQUESTS_JSON | receipt FILE REQUEST_KEY | batch FILE REQUEST_KEY JSON_FILE [MAX_BYTES MAX_TRANSACTIONS] | usage FILE [MAX_BYTES MAX_TRANSACTIONS] | recovery-plan FILE | recovery-copy SOURCE DEST EXPECTED_SHA256 | sql FILE SQL [REQUEST_KEY] | sql-transaction FILE REQUEST_KEY STATEMENTS_JSON | sql-sequential FILE REQUEST_KEY STATEMENTS_JSON | explain FILE SQL [PARAMS_JSON] | sql-bind FILE SQL PARAMS_JSON [REQUEST_KEY] | table-batch FILE REQUEST_KEY CHANGES_JSON | table-create FILE REQUEST_KEY SCHEMA_JSON | table-schema FILE TABLE | table-put FILE REQUEST_KEY TABLE EXPECTED_REVISION ROW_JSON | table-delete FILE REQUEST_KEY TABLE KEY EXPECTED_REVISION | table-get FILE TABLE KEY | table-scan FILE TABLE LIMIT [AFTER] | archive-create SOURCE DEST EXPECTED_SHA256 | archive-verify ARCHIVE | archive-restore ARCHIVE DEST EXPECTED_SHA256 | backup-plan SOURCE | backup-copy SOURCE DEST EXPECTED_SHA256 | snapshot-create SOURCE DEST EXPECTED_SHA256 | snapshot-verify SNAPSHOT | restore-copy SNAPSHOT NEW_DEST APPROVED_SNAPSHOT_SHA256 | tree-init FILE SLOTS | tree-verify FILE | tree-get FILE KEY | tree-range FILE START END LIMIT | tree-put FILE KEY EXPECTED_REVISION VALUE_JSON | pager-init FILE SLOTS | pager-verify FILE | pager-get FILE NAMESPACE KEY | pager-commit FILE CHANGES_JSON | page-create SNAPSHOT NEW_IMAGE APPROVED_SHA256 | cow-init FILE | cow-verify FILE | cow-sql FILE SQL [REQUEST_KEY] | cow-sql-bind FILE SQL PARAMS_JSON [REQUEST_KEY] | cow-sql-transaction FILE REQUEST_KEY STATEMENTS_JSON | cow-sql-sequential FILE REQUEST_KEY STATEMENTS_JSON | cow-explain FILE SQL [PARAMS_JSON] | migration-copy LOG NEW_IMAGE | migration-restore IMAGE NEW_LOG | migration-info IMAGE | migration-read IMAGE NAMESPACE KEY | migration-receipt IMAGE REQUEST_KEY | migration-match-log IMAGE LOG | page-build-log LOG NEW_IMAGE | page-refresh LOG IMAGE STAGING APPROVED_OLD_SHA256 | page-verify IMAGE | page-get IMAGE NAMESPACE KEY | page-match-log IMAGE LOG | index-create SNAPSHOT NEW_INDEX APPROVED_SNAPSHOT_SHA256 | index-verify INDEX | index-get INDEX NAMESPACE KEY | index-get-many INDEX REQUESTS_JSON | index-range INDEX NAMESPACE START END LIMIT | index-page INDEX NAMESPACE START END LIMIT [CURSOR_JSON]>\n\
      EXPERIMENTAL / SINGLE WRITER / NO AUTOMATIC RECOVERY / NOT FOR VALUABLE DATA"
 }
 fn limits(args: &[String]) -> Result<NativeLimits, Box<dyn Error>> {
@@ -34,8 +34,34 @@ fn table_input<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, Box<dyn 
     }
     Ok(serde_json::from_slice(&fs::read(path)?)?)
 }
+fn open_sql_store(
+    cmd: &str,
+    file: &str,
+) -> Result<Box<dyn sedravasql_native_engine::SqlStore>, Box<dyn Error>> {
+    if cmd.starts_with("cow-") {
+        #[cfg(unix)]
+        return Ok(Box::new(
+            sedravasql_native_engine::cow_store::CowStore::open(Path::new(file))?,
+        ));
+        #[cfg(not(unix))]
+        return Err("COW backend is only available on Unix".into());
+    }
+    Ok(Box::new(NativeLog::open(Path::new(file))?))
+}
 fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
     match args {
+        #[cfg(unix)]
+        [_, cmd, file] if cmd == "cow-init" || cmd == "cow-verify" => {
+            use sedravasql_native_engine::cow_store::CowStore;
+            let mut db = if cmd == "cow-init" {
+                CowStore::create(Path::new(file))?
+            } else {
+                CowStore::open(Path::new(file))?
+            };
+            db.verify()?;
+            println!("{}", serde_json::to_string(&db.report())?);
+        }
+
         #[cfg(unix)]
         [_, cmd, log, dest] if cmd == "migration-copy" => {
             let m = sedravasql_native_engine::cow_migration::migrate_copy(
@@ -194,72 +220,83 @@ fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
             let plan = recover_to_new_file(Path::new(source), Path::new(destination), digest)?;
             println!("{}", serde_json::to_string(&plan)?);
         }
-        [_, cmd, file, request, statements] if cmd == "sql-sequential" => {
+        [_, cmd, file, request, statements]
+            if cmd == "sql-sequential" || cmd == "cow-sql-sequential" =>
+        {
             let statements: Vec<sedravasql_native_engine::sql::BoundStatement> =
                 table_input(statements)?;
-            let mut db = NativeLog::open(Path::new(file))?;
+            let mut db = open_sql_store(cmd, file)?;
             println!(
                 "{}",
                 serde_json::to_string(&sedravasql_native_engine::sql::execute_sequential(
-                    &mut db,
+                    db.as_mut(),
                     &statements,
                     request
                 )?)?
             );
         }
-        [_, cmd, file, request, statements] if cmd == "sql-transaction" => {
+        [_, cmd, file, request, statements]
+            if cmd == "sql-transaction" || cmd == "cow-sql-transaction" =>
+        {
             let statements: Vec<sedravasql_native_engine::sql::BoundStatement> =
                 table_input(statements)?;
-            let mut db = NativeLog::open(Path::new(file))?;
+            let mut db = open_sql_store(cmd, file)?;
             println!(
                 "{}",
                 serde_json::to_string(&sedravasql_native_engine::sql::execute_transaction(
-                    &mut db,
+                    db.as_mut(),
                     &statements,
                     request
                 )?)?
             );
         }
-        [_, cmd, file, sql, params, rest @ ..] if cmd == "sql-bind" => {
+        [_, cmd, file, sql, params, rest @ ..] if cmd == "sql-bind" || cmd == "cow-sql-bind" => {
             let request = match rest {
                 [] => None,
                 [s] => Some(s.as_str()),
                 _ => return Err("sql-bind: expected optional request key".into()),
             };
             let params: Vec<sedravasql_native_engine::table::Cell> = table_input(params)?;
-            let mut db = NativeLog::open(Path::new(file))?;
+            let mut db = open_sql_store(cmd, file)?;
             println!(
                 "{}",
                 serde_json::to_string(&sedravasql_native_engine::sql::execute_bound(
-                    &mut db, sql, &params, request
+                    db.as_mut(),
+                    sql,
+                    &params,
+                    request
                 )?)?
             );
         }
-        [_, cmd, file, sql, rest @ ..] if cmd == "explain" => {
+        [_, cmd, file, sql, rest @ ..] if cmd == "explain" || cmd == "cow-explain" => {
             let params: Vec<sedravasql_native_engine::table::Cell> = match rest {
                 [] => vec![],
                 [file] => table_input(file)?,
                 _ => return Err("explain: expected optional params JSON".into()),
             };
-            let mut db = NativeLog::open(Path::new(file))?;
+            let mut db = open_sql_store(cmd, file)?;
             println!(
                 "{}",
                 serde_json::to_string(&sedravasql_native_engine::sql::explain(
-                    &mut db, sql, &params
+                    db.as_mut(),
+                    sql,
+                    &params
                 )?)?
             );
         }
-        [_, cmd, file, sql, rest @ ..] if cmd == "sql" => {
+        [_, cmd, file, sql, rest @ ..] if cmd == "sql" || cmd == "cow-sql" => {
             let request = match rest {
                 [] => None,
                 [s] => Some(s.as_str()),
                 _ => return Err("sql: expected optional request key".into()),
             };
-            let mut db = NativeLog::open(Path::new(file))?;
+            let mut db = open_sql_store(cmd, file)?;
             println!(
                 "{}",
                 serde_json::to_string(&sedravasql_native_engine::sql::execute(
-                    &mut db, sql, request
+                    db.as_mut(),
+                    sql,
+                    request
                 )?)?
             );
         }

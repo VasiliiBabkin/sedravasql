@@ -1,6 +1,6 @@
 //! B16b: bounded single-statement SQL subset over the native table adapter.
 //! No external SQL engine. Identifiers case-sensitive; keywords case-insensitive.
-use super::{valid_id, Error, NativeChange, NativeLog, NativeMutation, Result, TransactionalStore};
+use super::{valid_id, Error, NativeChange, NativeMutation, Result, SqlStore};
 use crate::table::{Cell, Column, ColumnType, Row, TableMutation, TableSchema, Tables};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -1272,11 +1272,11 @@ fn join_query(t: &Tables<'_>, stmt: &Statement) -> Result<SqlResult> {
         rows: out.into_iter().take(*limit).map(|(_, v)| v).collect(),
     })
 }
-pub fn execute(db: &mut NativeLog, sql: &str, request: Option<&str>) -> Result<SqlResult> {
+pub fn execute(db: &mut dyn SqlStore, sql: &str, request: Option<&str>) -> Result<SqlResult> {
     execute_bound(db, sql, &[], request)
 }
 pub fn execute_bound(
-    db: &mut NativeLog,
+    db: &mut dyn SqlStore,
     sql: &str,
     params: &[Cell],
     request: Option<&str>,
@@ -1373,7 +1373,7 @@ pub fn execute_bound(
     commit_write(db, request, fingerprint, ops)
 }
 
-fn replay_write(db: &NativeLog, request: &str, fingerprint: &str) -> Result<Option<SqlResult>> {
+fn replay_write(db: &dyn SqlStore, request: &str, fingerprint: &str) -> Result<Option<SqlResult>> {
     if request.len() < 12 || !valid_id(request) {
         return Err(Error::Invalid("sql: invalid request key"));
     }
@@ -1488,7 +1488,7 @@ fn prepare_write(t: &Tables<'_>, stmt: Statement) -> Result<Vec<NativeMutation>>
     Ok(ops)
 }
 fn commit_write(
-    db: &mut NativeLog,
+    db: &mut dyn SqlStore,
     request: &str,
     fingerprint: String,
     ops: Vec<NativeMutation>,
@@ -1496,7 +1496,7 @@ fn commit_write(
     commit_with_reads(db, request, fingerprint, ops, None)
 }
 fn commit_with_reads(
-    db: &mut NativeLog,
+    db: &mut dyn SqlStore,
     request: &str,
     fingerprint: String,
     mut ops: Vec<NativeMutation>,
@@ -1549,7 +1549,7 @@ pub struct BoundStatement {
     pub params: Vec<Cell>,
 }
 pub fn execute_transaction(
-    db: &mut NativeLog,
+    db: &mut dyn SqlStore,
     statements: &[BoundStatement],
     request: &str,
 ) -> Result<SqlResult> {
@@ -1657,7 +1657,7 @@ fn transaction_key(schema: &TableSchema, where_: &[Predicate]) -> Result<String>
 /// One atomic batch, sequential PK reads/writes and durable query observations.
 /// FK checks are deferred until final commit. No interactive session.
 pub fn execute_sequential(
-    db: &mut NativeLog,
+    db: &mut dyn SqlStore,
     statements: &[BoundStatement],
     request: &str,
 ) -> Result<SqlResult> {
@@ -1835,7 +1835,7 @@ pub struct QueryPlan {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index_cached: Option<bool>,
 }
-pub fn explain(db: &mut NativeLog, sql: &str, params: &[Cell]) -> Result<QueryPlan> {
+pub fn explain(db: &mut dyn SqlStore, sql: &str, params: &[Cell]) -> Result<QueryPlan> {
     let stmt = parse_bound(sql, params)?;
     if let Statement::Join {
         left,
