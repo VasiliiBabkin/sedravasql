@@ -67,11 +67,12 @@ fn frame_parts(frame: &Frame, prev: &[u8; 32]) -> Result<(Vec<Mutation>, [u8; 32
     Ok((out, digest, size))
 }
 
-fn read_history(tree: &mut CowTree) -> Result<(Replay, u64)> {
+fn read_history(tree: &mut CowTree) -> Result<(Replay, u64, u64)> {
     let rows = tree.snapshot_rows()?;
     let mut rows = rows.into_iter();
     let mut state = Replay::default();
     let mut bytes = TAG.len() as u64;
+    let mut logical_bytes = 8u64;
     // Lexical order places f-* before the final format marker.
     let mut next = rows.next().ok_or_else(bad)?;
     while next.key != "format" {
@@ -92,6 +93,7 @@ fn read_history(tree: &mut CowTree) -> Result<(Replay, u64)> {
             .checked_add(next.value.as_ref().unwrap().len() as u64)
             .ok_or_else(cap)?;
         let mut payload = String::with_capacity(desc.bytes);
+        let mut chunk_lengths = Vec::new();
         for i in 0..desc.chunks {
             let row = rows.next().ok_or_else(bad)?;
             let value = row.value.ok_or_else(bad)?;
@@ -103,12 +105,19 @@ fn read_history(tree: &mut CowTree) -> Result<(Replay, u64)> {
             {
                 return Err(bad());
             }
+            chunk_lengths.push(value.len());
             payload.push_str(&value);
         }
         if payload.len() != desc.bytes {
             return Err(bad());
         }
         bytes = bytes.checked_add(payload.len() as u64).ok_or_else(cap)?;
+        logical_bytes = logical_bytes
+            .checked_add(payload.len() as u64 + 36)
+            .ok_or_else(cap)?;
+        if logical_bytes > MAX_LOG_BYTES {
+            return Err(cap());
+        }
         if bytes > MAX_FRAME_BYTES {
             return Err(cap());
         }
@@ -124,6 +133,10 @@ fn read_history(tree: &mut CowTree) -> Result<(Replay, u64)> {
             .and_then(|m| m.value.as_deref())
             .ok_or_else(bad)?;
         if next.value.as_deref() != Some(expected)
+            || canonical[..canonical.len() - 1]
+                .iter()
+                .map(|m| m.value.as_ref().unwrap().len())
+                .ne(chunk_lengths)
             || hex(&digest) != desc.chain
             || serde_json::to_string(&frame).map_err(|_| bad())? != payload
         {
@@ -139,13 +152,15 @@ fn read_history(tree: &mut CowTree) -> Result<(Replay, u64)> {
     {
         return Err(bad());
     }
-    Ok((state, bytes))
+    Ok((state, bytes, logical_bytes))
 }
 
 pub struct CowStore {
     tree: CowTree,
     state: Replay,
     payload_bytes: u64,
+    logical_bytes: u64,
+    limits: NativeLimits,
     poisoned: bool,
     pub(crate) secondary_cache: std::cell::RefCell<table::IndexCache>,
 }
@@ -164,11 +179,13 @@ impl CowStore {
     }
     pub fn open(path: &Path) -> Result<Self> {
         let mut tree = CowTree::open(path)?;
-        let (state, payload_bytes) = read_history(&mut tree)?;
+        let (state, payload_bytes, logical_bytes) = read_history(&mut tree)?;
         Ok(Self {
             tree,
             state,
             payload_bytes,
+            logical_bytes,
+            limits: NativeLimits::default(),
             poisoned: false,
             secondary_cache: Default::default(),
         })
@@ -186,10 +203,11 @@ impl CowStore {
         self.healthy()?;
         let r = read_history(&mut self.tree);
         match r {
-            Ok((state, bytes))
+            Ok((state, bytes, logical_bytes))
                 if state.seq == self.state.seq
                     && state.hash == self.state.hash
-                    && bytes == self.payload_bytes =>
+                    && bytes == self.payload_bytes
+                    && logical_bytes == self.logical_bytes =>
             {
                 Ok(())
             }
@@ -202,6 +220,12 @@ impl CowStore {
                 Err(e)
             }
         }
+    }
+    /// Same logical frame byte/count limits as NativeLog, in addition to
+    /// the independent COW physical and serialized payload budgets.
+    pub fn set_limits(&mut self, limits: NativeLimits) -> Result<()> {
+        self.limits = limits.validate()?;
+        Ok(())
     }
     pub fn sequence(&self) -> u64 {
         self.state.seq
@@ -318,6 +342,13 @@ impl TransactionalStore for CowStore {
         {
             return Err(cap());
         }
+        let logical_projected = self
+            .logical_bytes
+            .checked_add(serde_json::to_vec(&frame).map_err(|_| bad())?.len() as u64 + 36)
+            .ok_or_else(cap)?;
+        if logical_projected > self.limits.max_bytes || frame.seq > self.limits.max_transactions {
+            return Err(cap());
+        }
         // Commit uses the COW ownership check and publishes all fragments at
         // once. Any error is treated conservatively as requiring reopen.
         if let Err(e) = self.tree.commit_frame(&parts) {
@@ -327,6 +358,7 @@ impl TransactionalStore for CowStore {
         let result = pending.result.clone();
         apply(&mut self.state, pending, digest);
         self.payload_bytes = projected;
+        self.logical_bytes = logical_projected;
         self.secondary_cache.get_mut().retain(|(table, _), _| {
             let ns = format!("sedravasql_table.{table}");
             let catalog = format!("sedravasql_index_catalog.{table}");

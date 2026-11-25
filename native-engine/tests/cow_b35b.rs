@@ -152,3 +152,46 @@ fn explicit_cli_backend_roundtrip() {
         .unwrap();
     assert!(!r.status.success());
 }
+#[test]
+fn logical_limits_allow_replay_at_capacity() {
+    use sedravasql_native_engine::{Error, NativeLimits};
+    let d = dir();
+    let p = d.path().join("cow");
+    let mut a = CowStore::create(&p).unwrap();
+    a.set_limits(NativeLimits {
+        max_bytes: 64 * 1024 * 1024,
+        max_transactions: 1,
+    })
+    .unwrap();
+    let q = "CREATE TABLE T (id TEXT PRIMARY KEY,n INT)";
+    execute(&mut a, q, Some("cow-create-00001")).unwrap();
+    assert!(matches!(
+        execute(
+            &mut a,
+            "INSERT INTO T (id,n) VALUES ('a',1)",
+            Some("cow-insert-00001")
+        ),
+        Err(Error::Capacity(_))
+    ));
+    assert!(matches!(
+        execute(&mut a, q, Some("cow-create-00001")).unwrap(),
+        sedravasql_native_engine::sql::SqlResult::Write { replayed: true, .. }
+    ));
+    assert_eq!(a.sequence(), 1);
+    drop(a);
+    let mut a = CowStore::open(&p).unwrap();
+    a.set_limits(NativeLimits {
+        max_bytes: 8,
+        max_transactions: 10,
+    })
+    .unwrap();
+    assert!(matches!(
+        execute(
+            &mut a,
+            "INSERT INTO T (id,n) VALUES ('a',1)",
+            Some("cow-insert-00001")
+        ),
+        Err(Error::Capacity(_))
+    ));
+    a.verify().unwrap();
+}
