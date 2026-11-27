@@ -144,6 +144,57 @@ pub trait TransactionalStore {
     fn commit_batch(&mut self, request_key: &str, ops: &[NativeMutation]) -> Result<NativeCommit>;
 }
 
+/// Internal SQL backend contract. The public SQL API still uses NativeLog;
+/// alternative implementations must preserve atomic commit, ordering and
+/// durable receipt semantics before integration.
+pub(crate) trait SqlStore: TransactionalStore {
+    fn sequence(&self) -> u64;
+    fn lookup_receipt(&self, key: &str) -> Result<Option<NativeCommit>>;
+    fn scan_namespace(
+        &self,
+        namespace: &str,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<NativeEntry>>;
+    fn scan_namespace_range(
+        &self,
+        namespace: &str,
+        start: &str,
+        end: &str,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<NativeEntry>>;
+    fn secondary_cache(&self) -> &std::cell::RefCell<table::IndexCache>;
+}
+impl SqlStore for NativeLog {
+    fn sequence(&self) -> u64 {
+        NativeLog::sequence(self)
+    }
+    fn lookup_receipt(&self, key: &str) -> Result<Option<NativeCommit>> {
+        NativeLog::lookup_receipt(self, key)
+    }
+    fn scan_namespace(
+        &self,
+        ns: &str,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<NativeEntry>> {
+        NativeLog::scan_namespace(self, ns, after, limit)
+    }
+    fn scan_namespace_range(
+        &self,
+        ns: &str,
+        start: &str,
+        end: &str,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<NativeEntry>> {
+        NativeLog::scan_namespace_range(self, ns, start, end, after, limit)
+    }
+    fn secondary_cache(&self) -> &std::cell::RefCell<table::IndexCache> {
+        &self.secondary_cache
+    }
+}
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Frame {

@@ -1,6 +1,6 @@
 //! B16b: bounded single-statement SQL subset over the native table adapter.
 //! No external SQL engine. Identifiers case-sensitive; keywords case-insensitive.
-use super::{valid_id, Error, NativeChange, NativeLog, NativeMutation, Result, TransactionalStore};
+use super::{valid_id, Error, NativeChange, NativeLog, NativeMutation, Result, SqlStore};
 use crate::table::{Cell, Column, ColumnType, Row, TableMutation, TableSchema, Tables};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -1281,12 +1281,21 @@ pub fn execute_bound(
     params: &[Cell],
     request: Option<&str>,
 ) -> Result<SqlResult> {
+    execute_bound_on(db, sql, params, request)
+}
+
+pub(crate) fn execute_bound_on(
+    db: &mut dyn SqlStore,
+    sql: &str,
+    params: &[Cell],
+    request: Option<&str>,
+) -> Result<SqlResult> {
     let stmt = parse_bound(sql, params)?;
     if matches!(&stmt, Statement::Join { .. }) {
         if request.is_some() {
             return Err(Error::Invalid("sql: SELECT does not take request key"));
         }
-        return join_query(&Tables::new(db), &stmt);
+        return join_query(&Tables::with_store(db), &stmt);
     }
     if let Statement::Aggregate {
         having,
@@ -1301,7 +1310,7 @@ pub fn execute_bound(
         if request.is_some() {
             return Err(Error::Invalid("sql: SELECT does not take request key"));
         }
-        let t = Tables::new(db);
+        let t = Tables::with_store(db);
         let schema = required_schema(&t, table)?;
         return aggregate_query(
             &t,
@@ -1326,7 +1335,7 @@ pub fn execute_bound(
         if request.is_some() {
             return Err(Error::Invalid("sql: SELECT does not take request key"));
         }
-        let t = Tables::new(db);
+        let t = Tables::with_store(db);
         let schema = required_schema(&t, table)?;
         let cols = if columns.is_empty() {
             schema.columns.iter().map(|c| c.name.clone()).collect()
@@ -1369,11 +1378,11 @@ pub fn execute_bound(
     if let Some(result) = replay_write(db, request, &fingerprint)? {
         return Ok(result);
     }
-    let ops = prepare_write(&Tables::new(db), stmt)?;
+    let ops = prepare_write(&Tables::with_store(db), stmt)?;
     commit_write(db, request, fingerprint, ops)
 }
 
-fn replay_write(db: &NativeLog, request: &str, fingerprint: &str) -> Result<Option<SqlResult>> {
+fn replay_write(db: &dyn SqlStore, request: &str, fingerprint: &str) -> Result<Option<SqlResult>> {
     if request.len() < 12 || !valid_id(request) {
         return Err(Error::Invalid("sql: invalid request key"));
     }
@@ -1488,7 +1497,7 @@ fn prepare_write(t: &Tables<'_>, stmt: Statement) -> Result<Vec<NativeMutation>>
     Ok(ops)
 }
 fn commit_write(
-    db: &mut NativeLog,
+    db: &mut dyn SqlStore,
     request: &str,
     fingerprint: String,
     ops: Vec<NativeMutation>,
@@ -1496,7 +1505,7 @@ fn commit_write(
     commit_with_reads(db, request, fingerprint, ops, None)
 }
 fn commit_with_reads(
-    db: &mut NativeLog,
+    db: &mut dyn SqlStore,
     request: &str,
     fingerprint: String,
     mut ops: Vec<NativeMutation>,
@@ -1553,6 +1562,14 @@ pub fn execute_transaction(
     statements: &[BoundStatement],
     request: &str,
 ) -> Result<SqlResult> {
+    execute_transaction_on(db, statements, request)
+}
+
+pub(crate) fn execute_transaction_on(
+    db: &mut dyn SqlStore,
+    statements: &[BoundStatement],
+    request: &str,
+) -> Result<SqlResult> {
     if statements.is_empty() || statements.len() > 15 {
         return Err(Error::Invalid("sql: transaction requires 1..15 statements"));
     }
@@ -1574,7 +1591,7 @@ pub fn execute_transaction(
     if let Some(result) = replay_write(db, request, &fingerprint)? {
         return Ok(result);
     }
-    let t = Tables::new(db);
+    let t = Tables::with_store(db);
     let mut ops = Vec::new();
     let mut seen = HashSet::new();
     for stmt in parsed {
@@ -1661,6 +1678,14 @@ pub fn execute_sequential(
     statements: &[BoundStatement],
     request: &str,
 ) -> Result<SqlResult> {
+    execute_sequential_on(db, statements, request)
+}
+
+pub(crate) fn execute_sequential_on(
+    db: &mut dyn SqlStore,
+    statements: &[BoundStatement],
+    request: &str,
+) -> Result<SqlResult> {
     if statements.is_empty() || statements.len() > 15 {
         return Err(Error::Invalid("sql: sequential requires 1..15 statements"));
     }
@@ -1688,7 +1713,7 @@ pub fn execute_sequential(
     if let Some(result) = replay_write(db, request, &fingerprint)? {
         return Ok(result);
     }
-    let t = Tables::new(db);
+    let t = Tables::with_store(db);
     let mut overlay = BTreeMap::new();
     let mut reads = Vec::new();
     let mut writes = 0;
@@ -1836,6 +1861,9 @@ pub struct QueryPlan {
     pub index_cached: Option<bool>,
 }
 pub fn explain(db: &mut NativeLog, sql: &str, params: &[Cell]) -> Result<QueryPlan> {
+    explain_on(db, sql, params)
+}
+pub(crate) fn explain_on(db: &mut dyn SqlStore, sql: &str, params: &[Cell]) -> Result<QueryPlan> {
     let stmt = parse_bound(sql, params)?;
     if let Statement::Join {
         left,
@@ -1847,7 +1875,7 @@ pub fn explain(db: &mut NativeLog, sql: &str, params: &[Cell]) -> Result<QueryPl
         ..
     } = &stmt
     {
-        let t = Tables::new(db);
+        let t = Tables::with_store(db);
         let l = required_schema(&t, left)?;
         let r = required_schema(&t, right)?;
         let a = resolve_join(&l, &r, on_left)?;
@@ -1883,7 +1911,7 @@ pub fn explain(db: &mut NativeLog, sql: &str, params: &[Cell]) -> Result<QueryPl
         } => (table, where_, true, group, order.is_some(), limit),
         _ => return Err(Error::Invalid("sql: explain requires SELECT")),
     };
-    let t = Tables::new(db);
+    let t = Tables::with_store(db);
     let schema = required_schema(&t, &table)?;
     predicates(&schema, &where_)?;
     let mut index_name = None;

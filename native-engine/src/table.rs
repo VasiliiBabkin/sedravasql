@@ -2,7 +2,7 @@
 //! Raw mutations to reserved namespaces, schema migrations and SQL are unsupported.
 use super::{
     valid_id, Error, NativeChange, NativeCommit, NativeEntry, NativeLog, NativeMutation, Result,
-    TransactionalStore,
+    SqlStore,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -184,10 +184,13 @@ fn index_namespace(table: &str) -> String {
     format!("sedravasql_index_catalog.{table}")
 }
 pub struct Tables<'a> {
-    db: &'a mut NativeLog,
+    db: &'a mut dyn SqlStore,
 }
 impl<'a> Tables<'a> {
     pub fn new(db: &'a mut NativeLog) -> Self {
+        Self::with_store(db)
+    }
+    pub(crate) fn with_store(db: &'a mut dyn SqlStore) -> Self {
         Self { db }
     }
     pub(crate) fn prepare_create(&self, schema: &TableSchema) -> Result<NativeMutation> {
@@ -403,7 +406,7 @@ impl<'a> Tables<'a> {
     }
     pub fn index_cached(&self, table: &str, column: &str) -> bool {
         self.db
-            .secondary_cache
+            .secondary_cache()
             .borrow()
             .contains_key(&(table.into(), column.into()))
     }
@@ -434,7 +437,7 @@ impl<'a> Tables<'a> {
         let table = schema.name.as_str();
         let namespace = schema.namespace();
         let cache_key = (table.to_owned(), column.to_owned());
-        if !self.db.secondary_cache.borrow().contains_key(&cache_key) {
+        if !self.db.secondary_cache().borrow().contains_key(&cache_key) {
             let mut map: BTreeMap<Cell, Vec<String>> = BTreeMap::new();
             let mut after = None;
             let mut seen = 0;
@@ -458,7 +461,7 @@ impl<'a> Tables<'a> {
                     }
                 }
             }
-            let mut cache = self.db.secondary_cache.borrow_mut();
+            let mut cache = self.db.secondary_cache().borrow_mut();
             if cache.len() >= INDEX_CACHE_MAX {
                 if let Some(first) = cache.keys().next().cloned() {
                     cache.remove(&first);
@@ -468,7 +471,7 @@ impl<'a> Tables<'a> {
         }
         let keys = self
             .db
-            .secondary_cache
+            .secondary_cache()
             .borrow()
             .get(&cache_key)
             .and_then(|m| m.get(value))

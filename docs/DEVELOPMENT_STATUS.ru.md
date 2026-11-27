@@ -1,5 +1,9 @@
 # Состояние разработки Sedrava / SedravaSQL
 
+## Контрольная точка B36 / архитектурная ревизия · 27 ноября 2026
+
+NativeLog остаётся основным SQL backend. B32–B36 сохранены в research; COW не принят как более быстрый default. Кандидат выборочно выделяет внутренний SqlStore без изменения публичного API или формата. [Ревизия, решения и дальнейшие gates](NATIVE_ARCHITECTURE_REVIEW_2026-11-27.ru.md). Слияние только после CI.
+
 ## Контрольная точка B31 · 24–25 ноября 2026
 
 **Публичные выпуски не менялись:** [Sedrava 0.12.0-alpha.2](https://github.com/VasiliiBabkin/sedrava/releases/tag/v0.12.0-alpha.2), [SedravaSQL 0.1.0-alpha.1](https://github.com/VasiliiBabkin/sedravasql/releases/tag/v0.1.0-alpha.1), Linux x86-64 GNU. Rust — единственная развиваемая реализация Sedrava. Ни один выпуск не объявлен стабильным.
