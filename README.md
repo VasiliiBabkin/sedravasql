@@ -8,7 +8,7 @@
 > The managed SQLite API is a constrained key/value interface; NativeLog has a limited SQL dialect, **not** a general SQL server,
 > full SQL dialect or PostgreSQL replacement. Do not store valuable data.
 
-**Current source checkpoint:** [B28 main / B31 research](docs/DEVELOPMENT_STATUS.en.md). Published alpha.1 is unchanged. NativeLog SQL is still journal-backed; the new COW tree is not its backend.
+**A28 development candidate (27 November 2026).** A26 integration passed both Forgejo jobs; A28 offline Linux x86-64 package and installation passed. Published alpha archives are unchanged. NativeLog remains the SQL backend; B32–B36 COW research is not adopted. See [platform distribution](https://github.com/VasiliiBabkin/sedrava/blob/feat/a28-distribution/docs/PLATFORM_DISTRIBUTION_A28.ru.md) and [integration evidence](https://github.com/VasiliiBabkin/sedrava/blob/integration/a26-platform/docs/INTEGRATION_A26.ru.md).
 
 Build (Rust 1.85+, Cargo, C compiler for bundled SQLite):
 
@@ -51,7 +51,7 @@ idempotency receipt.
 containing committed WAL data from a separate live writer. These tests
 **do not prove physical power-loss durability or universal reliability**.
 
-Features not implemented: arbitrary SQL, general relational schema,
+The managed SQLite key/value API does not implement arbitrary SQL, general relational schema,
 SQL server, replication, user roles, encryption, automatic migration,
 or production-grade crash recovery matrix.
 
@@ -148,3 +148,7 @@ Experimental [B24 mutable pager](docs/NATIVE_MUTABLE_PAGER_B24.ru.md).
 Experimental [B25 dynamic tree](docs/NATIVE_TREE_B25.ru.md).
 
 [Measured SQLite comparison (24 Nov 2026)](docs/BENCHMARK_2026_11_24.ru.md).
+
+## NativeLog A24 migrations (integration candidate)
+
+[Migration contract](docs/NATIVE_MIGRATIONS_A24.ru.md). Additive, one DDL per version, atomic history; no DROP, arbitrary ALTER or automatic downgrade. 21 root and 73 native tests passed on Forgejo. Public alpha.1 unchanged. Managed SQLite API is separate.

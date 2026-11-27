@@ -49,9 +49,11 @@ def main():
     assert status["production_ready"] is False
     assert status["current_public_alpha"]=="0.1.0-alpha.1"
     assert status["experimental_native_engine"]=="B28"
-    assert status["research_stage"]=="B31"
-    assert status["research_commit"]=="a98e709cc591057298818d0972c12cf020054295"
+    assert status["research_stage"]=="B36"
+    assert status["research_commit"]=="956899c5ffbe21895eeb81b5f5e6fed26a0be2a2"
     assert status["basis_commit"]=="363ccbc9542ed8e3ecf41e3619f78823ffeb97d4"
+    assert status["integration_candidate"]["sql_commit"]=="60a7d0488a23135fa064b7cf2496f93a78b519bd"
+    assert status["integration_candidate"]["published"] is False
     root=ElementTree.parse(SITE/"sitemap.xml")
     links=sorted(node.text for node in root.iter() if node.tag.endswith("loc"))
     assert links==["https://sql.virtreal.ru/","https://sql.virtreal.ru/docs/"]

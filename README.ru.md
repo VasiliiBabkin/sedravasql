@@ -9,7 +9,7 @@
 > Это ограниченный интерфейс ключ/значение, **не** полноценный
 > SQL-сервер или замена PostgreSQL.
 
-**Текущее состояние исходников:** [B28 в main / B31 в research](docs/DEVELOPMENT_STATUS.ru.md). Публичный alpha.1 не изменён. SQL использует журнал NativeLog, а не новое COW-дерево.
+**Кандидат A28 (27 ноября 2026).** Интеграция A26 прошла обе проверки Forgejo; автономный комплект Linux x86-64 A28 и его установка проверены. Публичные alpha-архивы не изменены. SQL использует NativeLog; COW B32–B36 не принят как основной движок. [Дистрибутив](https://github.com/VasiliiBabkin/sedrava/blob/feat/a28-distribution/docs/PLATFORM_DISTRIBUTION_A28.ru.md) · [Отчёт](https://github.com/VasiliiBabkin/sedrava/blob/integration/a26-platform/docs/INTEGRATION_A26.ru.md).
 
 ## Сборка и проверка
 
@@ -49,7 +49,7 @@ BIN=./target/debug/sedravasql
 отклоняется. Удаление требует `plan-delete`, потом `delete`
 с `--confirm`, ревизией и новым ключом запроса.
 
-## Статус возможностей
+## Статус возможностей управляемого SQLite API
 
 | Возможность | Статус |
 | --- | --- |
@@ -176,3 +176,7 @@ NativeLog B9: прямое чтение записей из офлайн-инд�
 Экспериментальное [динамическое дерево B25](docs/NATIVE_TREE_B25.ru.md).
 
 [Сравнение NativeLog SQL с SQLite (24.11.2026)](docs/BENCHMARK_2026_11_24.ru.md).
+
+## NativeLog A24: миграции в интеграционном кандидате
+
+[Контракт миграций](docs/NATIVE_MIGRATIONS_A24.ru.md). Добавочные шаги DDL, атомарная история; без DROP, произвольного ALTER и downgrade. В Forgejo прошли 21 тест основного пакета и 73 теста NativeLog. Публичный alpha.1 не изменён. SQLite API — отдельная реализация.

@@ -6,10 +6,18 @@
   "base_repository": "https://github.com/VasiliiBabkin/sedravasql",
   "basis_commit": "363ccbc9542ed8e3ecf41e3619f78823ffeb97d4",
   "production_ready": false,
-  "notes": "Development checkpoint B31; descriptive metadata, not live health. NativeLog B28 in main; B31 separate research, not SQL backend. Public alpha unchanged.",
+  "notes": "Descriptive metadata, not live health. Public alpha unchanged; A24/A26 candidate qualified, A28 offline package tested, not publicly released. NativeLog remains SQL backend.",
   "docs": "/docs/",
-  "research_stage": "B31",
-  "research_commit": "a98e709cc591057298818d0972c12cf020054295",
-  "language_basis_commit": "896685ce31f915d1ab69223f98451c2504792cf7",
-  "next_stage": "B32"
+  "research_stage": "B36",
+  "research_commit": "956899c5ffbe21895eeb81b5f5e6fed26a0be2a2",
+  "language_basis_commit": "f688f992f0e6e047b03ffdb968ddd4a454b091fe",
+  "next_stage": "A29/A30",
+  "integration_candidate": {
+    "sql_commit": "60a7d0488a23135fa064b7cf2496f93a78b519bd",
+    "language_commit": "f688f992f0e6e047b03ffdb968ddd4a454b091fe",
+    "forgejo_sql": "success",
+    "forgejo_language": "success",
+    "distribution": "a28-preview",
+    "published": false
+  }
 }
