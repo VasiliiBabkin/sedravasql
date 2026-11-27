@@ -1428,6 +1428,24 @@ fn replay_write(db: &dyn SqlStore, request: &str, fingerprint: &str) -> Result<O
     }
     Ok(None)
 }
+/// A24: exactly one additive DDL statement per migration version.
+pub(crate) fn migration_check(sql: &str) -> Result<()> {
+    match parse_bound(sql, &[])? {
+        Statement::Create(_) | Statement::AddForeignKey(_) | Statement::CreateIndex { .. } => {
+            Ok(())
+        }
+        _ => Err(Error::Invalid("migration: only additive DDL is supported")),
+    }
+}
+pub(crate) fn migration_prepare(db: &mut NativeLog, sql: &str) -> Result<NativeMutation> {
+    migration_check(sql)?;
+    let mut ops = prepare_write(&Tables::new(db), parse_bound(sql, &[])?)?;
+    if ops.len() != 1 {
+        return Err(Error::Invalid("migration: expected one catalog mutation"));
+    }
+    Ok(ops.remove(0))
+}
+
 fn prepare_write(t: &Tables<'_>, stmt: Statement) -> Result<Vec<NativeMutation>> {
     let mut ops = Vec::new();
     match stmt {

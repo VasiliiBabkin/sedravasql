@@ -1,0 +1,12 @@
+   Compiling sedravasql-native-engine v0.0.1 (/var/www/popizdim_tf7_usr/data/.sedrava-dev/a24sql-work/native-engine)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.91s
+     Running tests/migration_a24.rs (/var/www/popizdim_tf7_usr/data/.sedrava-sqlite-a5.auiH6QDN/sedravasql/target/debug/build/sedravasql-native-engine/7eed7854b4d06bae/out/migration_a24-7eed7854b4d06bae)
+
+running 4 tests
+test lost_response_after_sync_is_recoverable ... ok
+test applies_and_reopens_without_rewriting ... ok
+test prechecks_entire_plan_and_refuses_capacity_and_drift ... ok
+test refusal_is_atomic_per_version_and_repair_is_resumable ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
