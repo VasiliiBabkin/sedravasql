@@ -1,17 +1,17 @@
 {
   "project": "SedravaSQL",
   "website": "https://sql.virtreal.ru/",
-  "current_public_alpha": "0.1.0-alpha.1",
-  "experimental_native_engine": "B28",
+  "current_public_alpha": "0.1.0-alpha.2",
+  "experimental_native_engine": "0.0.2",
   "base_repository": "https://github.com/VasiliiBabkin/sedravasql",
-  "basis_commit": "363ccbc9542ed8e3ecf41e3619f78823ffeb97d4",
+  "basis_commit": "b36a628c95598a3e8e04b40ebf9c86cdc20e0604",
   "production_ready": false,
-  "notes": "Descriptive metadata, not live health. Public alpha unchanged; A24/A26 candidate qualified, A28 offline package tested, not publicly released. NativeLog remains SQL backend.",
+  "notes": "Descriptive metadata, not live health. A30 published experimental alpha, exact VDS qualification; prior A26 independent Forgejo CI. NativeLog remains SQL backend.",
   "docs": "/docs/",
   "research_stage": "B36",
   "research_commit": "956899c5ffbe21895eeb81b5f5e6fed26a0be2a2",
-  "language_basis_commit": "f688f992f0e6e047b03ffdb968ddd4a454b091fe",
-  "next_stage": "A29/A30",
+  "language_basis_commit": "761213bfd0240ffc6a2390045c125def4b87e194",
+  "next_stage": "Post-A30",
   "integration_candidate": {
     "sql_commit": "60a7d0488a23135fa064b7cf2496f93a78b519bd",
     "language_commit": "f688f992f0e6e047b03ffdb968ddd4a454b091fe",
@@ -19,5 +19,14 @@
     "forgejo_language": "success",
     "distribution": "a28-preview",
     "published": false
+  },
+  "published_platform": {
+    "sql_commit": "b36a628c95598a3e8e04b40ebf9c86cdc20e0604",
+    "language_commit": "761213bfd0240ffc6a2390045c125def4b87e194",
+    "distribution": "0.12.0-alpha.3-sql-0.1.0-alpha.2",
+    "archive_sha256": "438d8a974bd9edf3247da25d28fa76a96ad5e33a5d17554b3eec62b22a2f934f",
+    "archive_bytes": 6097061,
+    "vds_qualification": "pass",
+    "published": true
   }
 }

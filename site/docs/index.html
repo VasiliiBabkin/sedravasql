@@ -46,7 +46,7 @@
 <header><div class="container top"><a class="logo" href="/">Sedrava<span>SQL</span></a><nav aria-label="Навигация"><a href="/">Главная</a><a href="https://github.com/VasiliiBabkin/sedravasql">GitHub</a></nav></div></header>
 <main class="container">
   <div class="hero">
-    <span class="eyebrow">Документация / 0.1.0-alpha.1</span>
+    <span class="eyebrow">Документация / 0.1.0-alpha.2</span>
     <h1>Начните с проверяемого.</h1>
     <p>Краткое русскоязычное руководство по рабочему SQLite-прототипу SedravaSQL и отдельному экспериментальному журналу NativeLog. Полные спецификации и тесты публикуются в GitHub.</p>
     <div class="warning"><strong>Экспериментальное ПО.</strong> Ни текущий SQLite-прототип, ни независимый NativeLog не предназначены для ценных или производственных данных. SedravaSQL пока не является полноценным SQL-сервером.</div>
@@ -61,12 +61,12 @@
       <section id="difference">
         <h2>Два направления разработки</h2>
         <div class="grid">
-          <div class="tile"><b>0.1.0-alpha.1 · SQLite</b><p>Работающий встраиваемый прототип на Rust: типизированное key/value API, аудит, CAS, идемпотентность и резервирование через SQLite Backup API.</p></div>
+          <div class="tile"><b>0.1.0-alpha.2 · SQLite</b><p>Работающий встраиваемый прототип на Rust: типизированное key/value API, аудит, CAS, идемпотентность и резервирование через SQLite Backup API.</p></div>
           <div class="tile"><b>NativeLog · исследование</b><p>Отдельный Rust-движок без SQLite: append-only журнал с многоключевыми транзакциями, проверкой ревизий, журналом квитанций и экспериментами B1–B28.</p></div>
         </div>
       </section>
       <section id="install"><h2>Установка и сборка из исходников</h2>
-        <p><a href="https://sql.virtreal.ru/downloads/0.1.0-alpha.1/">Готовый Linux x86_64 alpha: два CLI и SHA-256</a>. Установка в отдельный каталог без Python и Rust. Проверено на Ubuntu 24.04; не для важных данных.</p>
+        <p><a href="https://sql.virtreal.ru/downloads/0.1.0-alpha.2/">Готовый Linux x86_64 alpha: три CLI и SHA-256</a>. Установка в отдельный каталог без Python и Rust. Проверено на Ubuntu 24.04; не для важных данных.</p>
         <p>Нужны Git, Rust не ниже 1.85, Cargo и C-компилятор. Сборка для Linux x86_64 проверялась на VDS; работа на других системах не подтверждается этой проверкой.</p>
 <pre><code>git clone https://github.com/VasiliiBabkin/sedravasql.git
 cd sedravasql
@@ -106,12 +106,12 @@ DIR=$(mktemp -d)
 "$BIN" sql "$DIR/demo.log" "SELECT id,price FROM Items"
 "$BIN" verify "$DIR/demo.log"</code></pre>
         <p>Используйте только тестовые данные. <a href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/NATIVE_SQL_B23.ru.md">SQL B23</a> · <a href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/NATIVE_TREE_B25.ru.md">B25</a> · <a href="https://github.com/VasiliiBabkin/sedravasql/blob/main/docs/BENCHMARK_2026_11_24.ru.md">Измерения</a>.</p>
-        <h3>Контрольная точка A28 · 27 ноября 2026</h3>
-<p><strong>Публичный релиз 0.1.0-alpha.1 не изменён.</strong> Интеграционный кандидат NativeLog включает B37 и добавочные миграции A24. Проверены 21 тест основного пакета, 73 теста нативного движка и связка с Sedrava: 85 Rust-тестов и 319 HTTP-запросов. Обе независимые проверки Forgejo завершены успешно.</p>
+        <h3>Выпуск A30 · 28 ноября 2026</h3>
+<p><strong>Публичный alpha-релиз 0.1.0-alpha.2 опубликован.</strong> NativeLog 0.0.2 включает B37 и добавочные миграции A24. Проверены 21 тест основного пакета, 73 теста нативного движка и связка с Sedrava: 85 Rust-тестов и 319 HTTP-запросов. Обе независимые проверки Forgejo завершены успешно.</p>
 <p>Миграции: CREATE TABLE, CREATE INDEX, ALTER TABLE ADD FOREIGN KEY, один DDL на версию, SHA-256 истории и атомарная запись каталога вместе с версией. Нет произвольного ALTER, DROP, автоматического отката или baseline заполненной базы.</p>
 <p>Исследования B32–B36 реализованы отдельно; COW не стал основным SQL-хранилищем по итогам сравнительных испытаний. B37 — внутренний интерфейс хранения, NativeLog остаётся основным SQL backend. Один писатель, ограниченный журнал, только тестовые данные.</p>
-<p>Единый комплект A28: два нативных CLI, 4 732 501 байт, проверка автономной установки на Ubuntu 24.04 x86-64. Пока не опубликован как новый релиз.</p>
-<p><a href="https://github.com/VasiliiBabkin/sedravasql/blob/integration/a26-platform/docs/NATIVE_MIGRATIONS_A24.ru.md">Миграции A24</a> · <a href="https://github.com/VasiliiBabkin/sedrava/blob/integration/a26-platform/docs/INTEGRATION_A26.ru.md">Интеграция A26</a> · <a href="https://github.com/VasiliiBabkin/sedrava/blob/feat/a28-distribution/docs/PLATFORM_DISTRIBUTION_A28.ru.md">Дистрибутив A28</a> · <a href="https://github.com/VasiliiBabkin/sedravasql/blob/research/b36-backend-benchmark/docs/NATIVE_B36_BENCHMARK.ru.md">Исследование B36</a></p>
+<p>Единый комплект A30: три CLI, 6 097 061 байт. Автономная установка проверена на Ubuntu 24.04 x86-64. Опубликован в GitHub и на официальном сайте.</p>
+<p><a href="https://github.com/VasiliiBabkin/sedravasql/blob/integration/a26-platform/docs/NATIVE_MIGRATIONS_A24.ru.md">Миграции A24</a> · <a href="https://github.com/VasiliiBabkin/sedrava/blob/integration/a26-platform/docs/INTEGRATION_A26.ru.md">Интеграция A26</a> · <a href="https://github.com/VasiliiBabkin/sedrava/blob/main/docs/PLATFORM_RELEASE_A30.ru.md">Дистрибутив A30</a> · <a href="https://github.com/VasiliiBabkin/sedravasql/blob/research/b36-backend-benchmark/docs/NATIVE_B36_BENCHMARK.ru.md">Исследование B36</a></p>
         <h3>Экспериментальный CLI</h3>
         <p>Ниже приведена демонстрация для <strong>заранее созданных тестовых файлов</strong> в приватной директории. Записывающий процесс должен быть остановлен. Это не команда для восстановления работающей базы.</p>
 <pre><code>cargo build --locked --manifest-path native-engine/Cargo.toml

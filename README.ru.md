@@ -1,4 +1,4 @@
-# SedravaSQL — 0.1.0-alpha.1
+# SedravaSQL — 0.1.0-alpha.2
 
 **Экспериментальная встраиваемая база данных на Rust и SQLite.**
 
@@ -9,7 +9,7 @@
 > Это ограниченный интерфейс ключ/значение, **не** полноценный
 > SQL-сервер или замена PostgreSQL.
 
-**Кандидат A28 (27 ноября 2026).** Интеграция A26 прошла обе проверки Forgejo; автономный комплект Linux x86-64 A28 и его установка проверены. Публичные alpha-архивы не изменены. SQL использует NativeLog; COW B32–B36 не принят как основной движок. [Дистрибутив](https://github.com/VasiliiBabkin/sedrava/blob/feat/a28-distribution/docs/PLATFORM_DISTRIBUTION_A28.ru.md) · [Отчёт](https://github.com/VasiliiBabkin/sedrava/blob/integration/a26-platform/docs/INTEGRATION_A26.ru.md).
+**Выпуск A30 (28 ноября 2026).** [SedravaSQL 0.1.0-alpha.2](https://github.com/VasiliiBabkin/sedravasql/releases/tag/v0.1.0-alpha.2), NativeLog 0.0.2, совместно с Sedrava 0.12.0-alpha.3. [Единый комплект](https://sql.virtreal.ru/downloads/0.1.0-alpha.2/) · [установка](https://github.com/VasiliiBabkin/sedrava/blob/main/docs/PLATFORM_RELEASE_A30.ru.md). На VDS прошли 21 тест основного пакета и 73 теста NativeLog; ранее A26 прошёл независимый Forgejo CI. COW остаётся исследованием. Не для production.
 
 ## Сборка и проверка
 
@@ -177,6 +177,6 @@ NativeLog B9: прямое чтение записей из офлайн-инд�
 
 [Сравнение NativeLog SQL с SQLite (24.11.2026)](docs/BENCHMARK_2026_11_24.ru.md).
 
-## NativeLog A24: миграции в интеграционном кандидате
+## NativeLog A24: миграции в alpha.2
 
-[Контракт миграций](docs/NATIVE_MIGRATIONS_A24.ru.md). Добавочные шаги DDL, атомарная история; без DROP, произвольного ALTER и downgrade. В Forgejo прошли 21 тест основного пакета и 73 теста NativeLog. Публичный alpha.1 не изменён. SQLite API — отдельная реализация.
+[Контракт миграций](docs/NATIVE_MIGRATIONS_A24.ru.md). Добавочные шаги DDL, атомарная история; без DROP, произвольного ALTER и downgrade. Для alpha.2 на VDS прошли 21 тест основного пакета и 73 теста NativeLog; ранее A26 прошёл Forgejo. SQLite API — отдельная реализация.

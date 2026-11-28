@@ -1,4 +1,4 @@
-# SedravaSQL — 0.1.0-alpha.1
+# SedravaSQL — 0.1.0-alpha.2
 
 **Experimental Rust database toolkit: SQLite-backed managed key/value API and independent NativeLog SQL preview.**
 
@@ -8,7 +8,7 @@
 > The managed SQLite API is a constrained key/value interface; NativeLog has a limited SQL dialect, **not** a general SQL server,
 > full SQL dialect or PostgreSQL replacement. Do not store valuable data.
 
-**A28 development candidate (27 November 2026).** A26 integration passed both Forgejo jobs; A28 offline Linux x86-64 package and installation passed. Published alpha archives are unchanged. NativeLog remains the SQL backend; B32–B36 COW research is not adopted. See [platform distribution](https://github.com/VasiliiBabkin/sedrava/blob/feat/a28-distribution/docs/PLATFORM_DISTRIBUTION_A28.ru.md) and [integration evidence](https://github.com/VasiliiBabkin/sedrava/blob/integration/a26-platform/docs/INTEGRATION_A26.ru.md).
+**A30 release (28 November 2026).** [SedravaSQL 0.1.0-alpha.2](https://github.com/VasiliiBabkin/sedravasql/releases/tag/v0.1.0-alpha.2), NativeLog 0.0.2, with Sedrava 0.12.0-alpha.3. [Unified package](https://sql.virtreal.ru/downloads/0.1.0-alpha.2/) · [distribution guide](https://github.com/VasiliiBabkin/sedrava/blob/main/docs/PLATFORM_RELEASE_A30.ru.md). 21 managed and 73 native tests passed on VDS; prior A26 passed independent Forgejo CI. COW remains research. Not production-ready.
 
 Build (Rust 1.85+, Cargo, C compiler for bundled SQLite):
 
@@ -149,6 +149,6 @@ Experimental [B25 dynamic tree](docs/NATIVE_TREE_B25.ru.md).
 
 [Measured SQLite comparison (24 Nov 2026)](docs/BENCHMARK_2026_11_24.ru.md).
 
-## NativeLog A24 migrations (integration candidate)
+## NativeLog A24 migrations (alpha.2)
 
-[Migration contract](docs/NATIVE_MIGRATIONS_A24.ru.md). Additive, one DDL per version, atomic history; no DROP, arbitrary ALTER or automatic downgrade. 21 root and 73 native tests passed on Forgejo. Public alpha.1 unchanged. Managed SQLite API is separate.
+[Migration contract](docs/NATIVE_MIGRATIONS_A24.ru.md). Additive, one DDL per version, atomic history; no DROP, arbitrary ALTER or automatic downgrade. 21 root and 73 native tests passed on VDS for alpha.2; prior A26 passed Forgejo. Managed SQLite API is separate.
