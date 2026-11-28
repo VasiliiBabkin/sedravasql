@@ -1,0 +1,3 @@
+# SedravaSQL contributor and agent instructions
+
+Before planning or implementing any change, read the canonical [Sedrava declaration and Architecture Gate](https://github.com/VasiliiBabkin/sedrava/blob/main/docs/DECLARATION.ru.md) and [CONTRIBUTING.md](CONTRIBUTING.md). SedravaSQL follows **«Описал — получил»**: enforce declared domain relations and integrity rather than require repeated manual wiring. Storage and SQL work must demonstrate application benefit or measurable reliability, safety, performance or portability; retain explicit limits and evidence. Never treat a research result as production capability. Changes to the canonical declaration require explicit owner agreement.

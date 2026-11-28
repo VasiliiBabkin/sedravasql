@@ -1,5 +1,7 @@
 # SedravaSQL — 0.1.0-alpha.2
 
+[Normative ecosystem declaration and Architecture Gate](https://github.com/VasiliiBabkin/sedrava/blob/main/docs/DECLARATION.ru.md).
+
 **Experimental Rust database toolkit: SQLite-backed managed key/value API and independent NativeLog SQL preview.**
 
 [Русский](README.ru.md) · [Implementation contract](docs/IMPLEMENTED_V0_1.ru.md)

@@ -1,5 +1,7 @@
 # Roadmap — SedravaSQL
 
+**Governing document:** [Sedrava declaration and Architecture Gate](https://github.com/VasiliiBabkin/sedrava/blob/main/docs/DECLARATION.ru.md). After A32, prioritize domain schemas, relationships, integrity and migration contracts that support a single declarative source of truth. Earlier milestones are historical planning context.
+
 **Status:** proposed milestones. These are not releases, commitments, or dates. Completion must be demonstrated by tests and documented commands.
 
 ## Current checkpoint

@@ -1,5 +1,7 @@
 # SedravaSQL — 0.1.0-alpha.2
 
+[Декларация экосистемы «Описал — получил» и обязательный архитектурный шлюз](https://github.com/VasiliiBabkin/sedrava/blob/main/docs/DECLARATION.ru.md).
+
 **Экспериментальная встраиваемая база данных на Rust и SQLite.**
 
 [English](README.md) · [Подробный контракт](docs/IMPLEMENTED_V0_1.ru.md)

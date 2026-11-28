@@ -1,5 +1,7 @@
 # Contributing / Участие
 
+Before any contribution, apply the [canonical Sedrava declaration and Architecture Gate](https://github.com/VasiliiBabkin/sedrava/blob/main/docs/DECLARATION.ru.md). Record a before/after application example or measurable reliability, security, performance or portability improvement.
+
 Thank you for taking an interest in SedravaSQL. The project is in the design stage. The repository is licensed under **Apache License 2.0**; read [LICENSE](LICENSE) before contributing. As specified in Section 5 of that license, contributions intentionally submitted for inclusion are provided under the license terms unless explicitly stated otherwise. Submit only materials you have rights to contribute.
 
 ## Before submitting changes
