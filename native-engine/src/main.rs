@@ -36,6 +36,13 @@ fn table_input<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, Box<dyn 
 }
 fn run(args: &[String]) -> Result<(), Box<dyn Error>> {
     match args {
+        [_, cmd] if cmd == "--version" => {
+            println!(
+                "sedravasql-native-preview {} (NativeLog alpha)",
+                env!("CARGO_PKG_VERSION")
+            );
+        }
+        [_, cmd] if cmd == "--help" || cmd == "-h" => println!("{}", usage()),
         [_, cmd, file, plan] if matches!(cmd.as_str(), "migration-status" | "migration-apply") => {
             use sedravasql_native_engine::migration;
             let plan = migration::Plan::read(Path::new(plan))?;

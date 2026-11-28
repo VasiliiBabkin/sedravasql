@@ -136,6 +136,13 @@ fn cli(args: &[String]) -> Result<()> {
 }
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.as_slice() == ["--version"] {
+        println!(
+            "sedravasql {} (managed SQLite alpha)",
+            env!("CARGO_PKG_VERSION")
+        );
+        return;
+    }
     if args.len() == 1 && (args[0] == "--help" || args[0] == "-h") {
         println!("{}", help());
         return;
